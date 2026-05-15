@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # --------------------------------------------------------
-# 1. Page Configuration & Styling
+# 1. Page Configuration & UI Accents
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -10,29 +10,26 @@ st.set_page_config(
     layout="wide"
 )
 
-# Dark, ultra-clean styling accents
-st.markdown("""
+# Native HTML injection to give the UI a clean dashboard feel
+st.html(
+    """
     <style>
-    .metric-card {
-        background-color: #1e293b;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #3b82f6;
-    }
-    .politician-card {
-        border-left: 5px solid #ef4444;
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #2e3a4e;
+        border-radius: 8px;
     }
     </style>
-""", unsafe_html=True)
+    """
+)
 
 st.title("👁️‍🗨️ Asymmetry")
 st.caption("Tracking legal alpha by monitoring corporate executives and political disclosures.")
 
 # --------------------------------------------------------
-# 2. Mock Data Engines (Ready for Real REST API Swap)
+# 2. Data Processing Engines
 # --------------------------------------------------------
 def get_insider_data():
-    # Fields replicate clean Form 4 metrics focusing on "Skin in the Game"
+    # Replicates live SEC Form 4 metrics focusing on "Skin in the Game"
     data = [
         {"Ticker": "LITE", "Company": "Lumentum Holdings", "Insider": "Alan Lowe", "Role": "CEO", "Type": "Buy", "Value ($)": 250000, "Position Change": "+45%", "Filing Date": "2026-05-14"},
         {"Ticker": "FIX", "Company": "Comfort Systems USA", "Insider": "Brian Lane", "Role": "CEO", "Type": "Buy", "Value ($)": 1100000, "Position Change": "+12%", "Filing Date": "2026-05-12"},
@@ -43,7 +40,7 @@ def get_insider_data():
     return pd.DataFrame(data)
 
 def get_politician_data():
-    # Fields map directly to House/Senate PTR (Periodic Transaction Report) filings
+    # Replicates House/Senate PTR (Periodic Transaction Report) filings
     data = [
         {"Politician": "Markwayne Mullin", "Chamber": "Senate (OK)", "Ticker": "LRN", "Asset": "Stride Inc", "Type": "Purchase", "Amount Range": "$15,001 - $50,000", "Filing Date": "2026-05-13"},
         {"Politician": "Nancy Pelosi", "Chamber": "House (CA)", "Ticker": "NVDA", "Asset": "NVIDIA Corp", "Type": "Purchase (Options)", "Amount Range": "$1,000,001 - $5,000,000", "Filing Date": "2026-05-10"},
@@ -53,18 +50,18 @@ def get_politician_data():
     return pd.DataFrame(data)
 
 # --------------------------------------------------------
-# 3. Main Interface Layout (The Two Tabs)
+# 3. Interactive Multi-Tab Interface
 # --------------------------------------------------------
 tab1, tab2 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures"])
 
 # --- TAB 1: CORPORATE INSIDERS ---
 with tab1:
     st.subheader("Form 4 Intelligence Feed")
-    st.markdown("> *Tip: Look for Cluster Buying—where multiple executives load up on the same stock out-of-pocket.*")
+    st.caption("Filtering out noise to focus on open-market insider sentiment.")
     
     df_insider = get_insider_data()
     
-    # Simple interactive filter to strip away routine automated sales if needed
+    # Active toggle to isolate out-of-pocket buyers
     filter_buys = st.checkbox("Show Open-Market Buys Only", value=False)
     if filter_buys:
         df_insider = df_insider[df_insider["Type"] == "Buy"]
@@ -74,22 +71,21 @@ with tab1:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Value ($)": st.column_config.NumberColumn(format="$%d"),
-            "Position Change": st.column_config.TextColumn()
+            "Value ($)": st.column_config.NumberColumn(format="$%d")
         }
     )
 
 # --- TAB 2: POLITICIANS ---
 with tab2:
     st.subheader("Capitol Hill Trading Activity")
-    st.markdown("> *Note: Federal law requires Congress members to report transactions within 45 days. This tracks high-volume policy-adjacent moves.*")
+    st.caption("Tracking transaction disclosures filed by members of the U.S. House and Senate.")
     
     df_poly = get_politician_data()
     
-    # Filter by House or Senate
+    # Interactive filters for legislative branch tracking
     chamber_filter = st.multiselect("Filter by Chamber", ["Senate", "House"], default=["Senate", "House"])
     
-    # Simple regex parsing to match chamber selection
+    # Filter calculation logic
     mask = df_poly["Chamber"].str.contains("|".join(chamber_filter))
     df_poly_filtered = df_poly[mask]
     
@@ -98,4 +94,3 @@ with tab2:
         use_container_width=True,
         hide_index=True
     )
-
