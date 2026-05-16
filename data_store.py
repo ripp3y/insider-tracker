@@ -9,6 +9,8 @@ SECTOR_MAP = {
     "UMC": "Semiconductors / AI",
     "INTC": "Semiconductors / AI",
     "TXN": "Semiconductors / AI",
+    "AVGO": "Semiconductors / AI",
+    "AMD": "Semiconductors / AI",
     "LITE": "Optical Tech / Telecom",
     "FIX": "Industrial Infrastructure",
     "POWL": "Industrial Infrastructure",
@@ -19,12 +21,19 @@ SECTOR_MAP = {
     "STX": "Data Storage / Hardware",
     "SNDK": "Data Storage / Hardware",
     "MSFT": "Enterprise Software / Cloud",
+    "META": "Enterprise Software / Cloud",
+    "PLTR": "Defense Tech / AI",
+    "DELL": "Tech Hardware / Infrastructure",
+    "ORCL": "Enterprise Software / Cloud",
+    "GS": "Financials / Investment Banking",
+    "JPM": "Financials / Banking",
+    "V": "Financials / Payments",
     "LRN": "EdTech / Services"
 }
 
 def get_fallback_political_data():
     return [
-        {"Filing Date": TODAY - timedelta(days=0), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,000,001 - $5,000,000", "Numeric Max": 5000000},
+        {"Filing Date": TODAY - timedelta(days=0), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,001,000 - $5,000,000", "Numeric Max": 5000000},
         {"Filing Date": TODAY - timedelta(days=1), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
         {"Filing Date": TODAY - timedelta(days=2), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "TXN", "Type": "🟢 Purchase", "Amount Range": "$100,001 - $250,000", "Numeric Max": 250000},
         {"Filing Date": TODAY - timedelta(days=2), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "POWL", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
@@ -58,4 +67,21 @@ def get_institutional_data_raw():
         {"Filing Date": (TODAY - timedelta(days=6)).strftime('%Y-%m-%d'), "Ticker": "ALB", "Institution": "Citadel Advisors", "Type": "🟢 Position Increase", "Shares Changed": 340000, "Value ($)": 41000000},
         {"Filing Date": (TODAY - timedelta(days=9)).strftime('%Y-%m-%d'), "Ticker": "LITE", "Institution": "Point72 Asset Mgmt", "Type": "🔴 Position Decrease", "Shares Changed": -410000, "Value ($)": -22000000},
         {"Filing Date": (TODAY - timedelta(days=15)).strftime('%Y-%m-%d'), "Ticker": "ANFGF", "Institution": "Antofagasta Plc", "Type": "🟢 Position Increase", "Shares Changed": 600000, "Value ($)": 18000000}
+    ]
+
+def get_maga_portfolio_data():
+    return [
+        {"Ticker": "NVDA", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Accumulating", "Thesis": "AI Sovereign Infrastructure Mandate"},
+        {"Ticker": "INTC", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Heavy Staking", "Thesis": "Domestic Foundry Subsidies"},
+        {"Ticker": "PLTR", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Accumulating", "Thesis": "Federal Defense Tech Contracts"},
+        {"Ticker": "BE", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Accumulating", "Thesis": "Grid Infrastructure & Energy Dereg"},
+        {"Ticker": "DELL", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Steady Hold", "Thesis": "Federal Hardware Deployments"},
+        {"Ticker": "AVGO", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$250,000 - $500,000", "Action": "Strategic Accumulation", "Thesis": "Custom AI Silicon Architecture"},
+        {"Ticker": "AMD", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$250,000 - $500,000", "Action": "Strategic Accumulation", "Thesis": "Enterprise GPU Scaling"},
+        {"Ticker": "ORCL", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$250,000 - $500,000", "Action": "Strategic Accumulation", "Thesis": "Gov-Cloud Database Consolidation"},
+        {"Ticker": "GS", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Institutional Entry", "Thesis": "Financial Sector Deregulation"},
+        {"Ticker": "JPM", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Institutional Entry", "Thesis": "Financial Sector Deregulation"},
+        {"Ticker": "V", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Steady Hold", "Thesis": "Consumer Credit Scaling Mandates"},
+        {"电影": "MSFT", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"},
+        {"Ticker": "META", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"}
     ]
