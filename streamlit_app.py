@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
+import time
 from datetime import datetime, timedelta
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -22,27 +23,34 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 TODAY = datetime.now()
 
 # --------------------------------------------------------
-# 2. High-Availability Streaming Politician Data Engine
+# 2. Hard Reset Cache Clear Controller (Sidebar Bypass)
 # --------------------------------------------------------
-@st.cache_data(ttl=300)
-def load_live_politician_data():
-    # Ultra-lightweight pre-filtered community CSV stream (Bypasses S3 memory time-outs)
-    live_csv_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
+st.sidebar.header("System Controls")
+if st.sidebar.button("🔄 Force Hard Refresh", use_container_width=True):
+    st.cache_data.clear()
+    st.toast("Server-side memory cache cleared successfully!", icon="🔥")
+    time.sleep(0.5)
+    st.rerun()
+
+# --------------------------------------------------------
+# 3. High-Availability Streaming Politician Data Engine
+# --------------------------------------------------------
+@st.cache_data(ttl=60) # Tightened cache loop down to 60 seconds
+def load_live_politician_data(cache_buster):
+    # Appending the unique time signature prevents the cloud server from serving cached assets
+    live_csv_url = f"https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv?v={cache_buster}"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
     try:
-        # Pull down the flat-file database directly via network stream strings
         response = requests.get(live_csv_url, headers=headers, timeout=8)
         
         if response.status_code == 200 and len(response.text) > 100:
-            # Stream the text lines straight into the dataframe engine
             from io import StringIO
             df = pd.read_csv(StringIO(response.text))
             
-            # Dynamically map the columns coming in from the streaming data cluster
             df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
             df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
             df["Chamber"] = "House"
@@ -52,7 +60,6 @@ def load_live_politician_data():
             df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
             df["Amount Range"] = df["amount"].fillna("Unknown").astype(str)
             
-            # Clean indexing bounds
             df = df.dropna(subset=["Filing Date"])
             df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
             
@@ -61,7 +68,6 @@ def load_live_politician_data():
             return get_fallback_political_data()
             
     except Exception as e:
-        # Failover seamlessly if the remote server takes a hit
         return get_fallback_political_data()
 
 def get_fallback_political_data():
@@ -94,7 +100,7 @@ def get_insider_data():
     return pd.DataFrame(data)
 
 # --------------------------------------------------------
-# 3. Interactive Multi-Tab Dashboard Interface
+# 4. Interactive Multi-Tab Dashboard Interface
 # --------------------------------------------------------
 tab1, tab2 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures"])
 
@@ -115,7 +121,10 @@ with tab1:
 # --- TAB 2: POLITICIANS ---
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
-    df_poly = load_live_politician_data()
+    
+    # Generates a dynamic parameter based on current minute to shatter caching blocks
+    current_minute_key = time.strftime("%Y%m%d-%H%M")
+    df_poly = load_live_politician_data(current_minute_key)
     
     if df_poly is not None and not df_poly.empty:
         m1, m2 = st.columns(2)
