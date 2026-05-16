@@ -37,7 +37,6 @@ def load_live_politician_data():
     }
     
     try:
-        # Request data stream from the open API infrastructure
         response = requests.get(live_api_url, headers=headers, timeout=10)
         
         if response.status_code == 200:
@@ -50,7 +49,7 @@ def load_live_politician_data():
             # Normalize live API columns to match your exact dashboard UI
             df["Filing Date"] = pd.to_datetime(df.get("disclosure_date", df.get("filing_date")), errors='coerce')
             df["Politician"] = df.get("representative", df.get("lawmaker", "Unknown Lawmaker"))
-            df["Chamber"] = "House"  # Primary source focus
+            df["Chamber"] = "House"  
             df["Ticker"] = df.get("ticker", "N/A").astype(str).str.upper().str.strip()
             
             df["Type"] = df.get("type", "").astype(str).str.lower()
@@ -61,13 +60,11 @@ def load_live_politician_data():
             df = df.dropna(subset=["Filing Date"])
             df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
             
-            # Sort newest disclosures directly to the top
             return df.sort_values(by="Filing Date", ascending=False)
         else:
             return get_fallback_political_data()
             
     except Exception as e:
-        # High-availability smart fallback to keep your screen fully operational
         return get_fallback_political_data()
 
 def get_fallback_political_data():
@@ -116,7 +113,8 @@ with tab1:
     c1.metric("Tracked Exec Purchases", f"{total_buys} Companies")
     c2.metric("Total Tracked Buying Volume", f"${total_capital:,.0f}")
     
-    st.dataframe(df_insider, hide_index=True, use_container_width=True)
+    # Modern layout parameter applied here
+    st.dataframe(df_insider, hide_index=True, use_width="stretch")
 
 # --- TAB 2: POLITICIANS ---
 with tab2:
@@ -124,24 +122,22 @@ with tab2:
     df_poly = load_live_politician_data()
     
     if df_poly is not None and not df_poly.empty:
-        # Dynamic calculation of total transaction volume
         m1, m2 = st.columns(2)
         m1.metric("Recent Active Disclosures", f"{len(df_poly):,} Trades")
         m2.metric("Most Active Ticker", f"{df_poly['Ticker'].mode().get(0, 'N/A')}")
         
-        # Live Search & Filter Bar
         ticker_search = st.text_input("🔍 Filter by Stock Ticker (e.g., NVDA, MSFT)", "").upper().strip()
         if ticker_search:
             df_poly = df_poly[df_poly["Ticker"] == ticker_search]
             
         if not df_poly.empty:
-            # Clean up display timestamp to clean date format
             df_poly["Filing Date"] = df_poly["Filing Date"].dt.strftime('%Y-%m-%d')
             
+            # Modern layout parameter applied here
             st.dataframe(
                 df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]].head(100), 
                 hide_index=True,
-                use_container_width=True
+                use_width="stretch"
             )
             
             st.write("---")
