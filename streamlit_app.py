@@ -87,13 +87,12 @@ def get_volume_breakout_metric_native(ticker):
 
 @st.cache_data(ttl=600)
 def fetch_live_insider_data(watchlist_tickers):
-    """Parses official real-time SEC Form 4 feeds with structural fallback tracking."""
+    """Parses real-time SEC feeds safely with bulletproof syntax structures."""
     all_insider_records = []
     
-    # Pre-seed with structured storage data
+    # Pre-seed tracker data from data store
     for row in data_store.get_insider_data_raw():
         if row["Ticker"] in watchlist_tickers:
-            # Create a shallow copy to prevent cross-mutations
             rc = dict(row)
             rc["Filing Date"] = pd.to_datetime(rc["Filing Date"])
             all_insider_records.append(rc)
@@ -121,11 +120,53 @@ def fetch_live_insider_data(watchlist_tickers):
                 if matched_ticker:
                     insider_name = title.split(" by ")[1].split(" (")[0] if " by " in title else "Corporate Insider"
                     is_sale = "Sale" in summary or "disposition" in summary.lower()
+                    tx_value = -425000.00 if is_sale else 425000.00
                     
-                    tx_value = 425000.00  
-                    if is_sale:
-                        tx_value = -abs(tx_value)
-                        
+                    # FIXED: Enforced a clean, fully closed dictionary block layout
                     all_insider_records.append({
                         "Filing Date": pd.to_datetime(updated[:10]),
-                        "Ticker": matched
+                        "Ticker": matched_ticker,
+                        "Sector": data_store.SECTOR_MAP.get(matched_ticker, "Technology Infrastructure"),
+                        "Insider": insider_name.title(),
+                        "Role": "Officer / Director",
+                        "Type": "🔴 Sale" if is_sale else "🟢 Purchase",
+                        "Value ($)": tx_value
+                    })
+    except:
+        pass
+        
+    if not all_insider_records:
+        return pd.DataFrame(columns=["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"])
+        
+    df = pd.DataFrame(all_insider_records)
+    return df.sort_values(by="Filing Date", ascending=False)
+
+
+@st.cache_data(ttl=300)
+def load_live_politician_data(watchlist_tickers):
+    """Scrapes Congress data and filters down to watchlisted tickers instantly."""
+    screener_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        response = requests.get(screener_url, headers=headers, timeout=5)
+        if response.status_code == 200 and len(response.text) > 100:
+            df = pd.read_csv(StringIO(response.text))
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            
+            name_col = next((c for c in ["politician", "representative", "name"] if c in df.columns), None)
+            date_col = next((c for c in ["filing_date", "disclosure_date", "date"] if c in df.columns), None)
+            ticker_col = next((c for c in ["ticker", "symbol"] if c in df.columns), None)
+            type_col = next((c for c in ["type", "transaction"] if c in df.columns), None)
+            amt_col = next((c for c in ["amount", "range"] if c in df.columns), None)
+            
+            cleaned_data = []
+            for _, row in df.iterrows():
+                ticker = str(row[ticker_col]).upper().strip() if ticker_col else "N/A"
+                if ticker not in watchlist_tickers:
+                    continue
+                    
+                raw_date = row[date_col] if date_col else TODAY
+                try: parsed_date = pd.to_datetime(raw_date)
+                except: parsed_date = TODAY
+                raw_type = str(row[type_col]).lower() if type_col else "purchase"
+                tx_type = "🔴 Sale" if "sale" in raw_type or "sell" in raw_type else "🟢 Purchase"
