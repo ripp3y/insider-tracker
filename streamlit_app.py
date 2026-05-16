@@ -11,125 +11,80 @@ st.set_page_config(page_title="Asymmetry", page_icon="👁️‍🗨️", layout
 st.title("👁️‍🗨️ Asymmetry")
 st.caption("Alpha Tracking Dashboard")
 
-# 1. WATCHLIST SYNCHRONIZATION
+# 1. SIMPLE WATCHLIST TRACKING
 if "watchlist" not in st.session_state:
-    qp = st.query_params
-    if "list" in qp and qp["list"].strip():
-        st.session_state.watchlist = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
-    else:
-        st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
+    st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
 wl = st.session_state.watchlist
-st.query_params["list"] = ",".join(wl)
 
 
-# 2. BULLETPROOF DATA ENGINE
+# 2. FLATTENED DATA ENGINE (ZERO VARIABLE SCOPING RISKS)
 @st.cache_data(ttl=300)
-def get_clean_data(current_watchlist):
-    # Fallback DataFrames initialized upfront to prevent NameError
-    ins_df = pd.DataFrame()
-    poly_df = pd.DataFrame()
-    whale_df = pd.DataFrame()
-    
-    # Extract from local store with variable signature safety
+def get_clean_data():
+    # Fetch base structures safely
     try:
-        ins_df = pd.DataFrame(data_store.get_insider_data_raw(current_watchlist))
+        df_i = pd.DataFrame(data_store.get_insider_data_raw())
     except:
-        try:
-            ins_df = pd.DataFrame(data_store.get_insider_data_raw())
-        except:
-            pass
+        df_i = pd.DataFrame()
 
     try:
-        poly_df = pd.DataFrame(data_store.get_fallback_political_data(current_watchlist))
+        df_p = pd.DataFrame(data_store.get_fallback_political_data())
     except:
-        try:
-            poly_df = pd.DataFrame(data_store.get_fallback_political_data())
-        except:
-            pass
+        df_p = pd.DataFrame()
 
     try:
-        whale_df = pd.DataFrame(data_store.get_institutional_data_raw(current_watchlist))
+        df_w = pd.DataFrame(data_store.get_institutional_data_raw())
     except:
-        try:
-            whale_df = pd.DataFrame(data_store.get_institutional_data_raw())
-        except:
-            pass
+        df_w = pd.DataFrame()
 
-    # Standardize column naming rules safely
-    for df in [ins_df, poly_df, whale_df]:
-        if df is not None and not df.empty and "Ticker" in df.columns:
-            df["Ticker"] = df["Ticker"].astype(str).str.upper().str.strip()
+    # Apply flat upper case constraints to columns if they exist
+    if not df_i.empty and "Ticker" in df_i.columns:
+        df_i["Ticker"] = df_i["Ticker"].astype(str).str.upper().str.strip()
+    if not df_p.empty and "Ticker" in df_p.columns:
+        df_p["Ticker"] = df_p["Ticker"].astype(str).str.upper().str.strip()
+    if not df_w.empty and "Ticker" in df_w.columns:
+        df_w["Ticker"] = df_w["Ticker"].astype(str).str.upper().str.strip()
 
-    # Try dynamic live congress network pull
-    try:
-        url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
-        r = requests.get(url, timeout=3)
-        if r.status_code == 200 and len(r.text) > 100:
-            df_c = pd.read_csv(StringIO(r.text))
-            df_c.columns = [str(c).strip().lower() for c in df_c.columns]
-            
-            t_col = next((c for c in df_c.columns if c in ["ticker", "symbol"]), None)
-            n_col = next((c for c in df_c.columns if c in ["politician", "representative", "name"]), None)
-            v_col = next((c for c in df_c.columns if c in ["amount", "range"]), None)
-            ty_col = next((c for c in df_c.columns if c in ["type", "transaction"]), None)
-            
-            if t_col and n_col:
-                df_c[t_col] = df_c[t_col].astype(str).str.upper().str.strip()
-                df_fil = df_c[df_c[t_col].isin(current_watchlist)].copy()
-                if not df_fil.empty:
-                    poly_df = pd.DataFrame({
-                        "Filing Date": "Live Feed",
-                        "Politician": df_fil[n_col].astype(str).str.title(),
-                        "Chamber": "Congress",
-                        "Ticker": df_fil[t_col],
-                        "Type": df_fil[ty_col].fillna("Purchase").apply(lambda x: "🔴 Sale" if "sel" in str(x).lower() else "🟢 Purchase"),
-                        "Amount Range": df_fil[v_col].fillna("$15k-$50k"),
-                        "Numeric Max": 50000,
-                        "Sector": "Infrastructure / Tech"
-                    })
-    except:
-        pass
-        
-    # Strict watchlist filtering output layer
-    out_ins = ins_df[ins_df["Ticker"].isin(current_watchlist)] if (ins_df is not None and not ins_df.empty) else pd.DataFrame()
-    out_poly = poly_df[poly_df["Ticker"].isin(current_watchlist)] if (poly_df is not None and not poly_df.empty) else pd.DataFrame()
-    out_whale = whale_df[whale_df["Ticker"].isin(current_watchlist)] if (whale_df is not None and not whale_df.empty) else pd.DataFrame()
-        
-    return out_ins, out_poly, out_whale
-
-# Compile current frames
-df_insider, df_poly, df_whale = get_clean_data(wl)
+    return df_i, df_p, df_w
 
 
-# 3. SIDEBAR CONTROLS
+# Run clean pull
+raw_insider, raw_poly, raw_whale = get_clean_data()
+
+# Apply strict outer filtering based on current session array 
+df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
+df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
+df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
+
+
+# 3. SIDEBAR
 st.sidebar.header("🐋 Core Filters")
 min_insider = st.sidebar.slider("Min Insider Value ($)", 0, 1500000, 0, 50000)
 
-if df_insider is not None and not df_insider.empty and "Value ($)" in df_insider.columns:
+if not df_insider.empty and "Value ($)" in df_insider.columns:
     df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider]
 
 
-# 4. VIEWPORTS AND TABS SYSTEM
+# 4. FLAT TABS DISPLAYS
 t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
 with t1:
     st.subheader("Corporate Insiders")
-    if df_insider is not None and not df_insider.empty:
+    if not df_insider.empty:
         st.dataframe(df_insider, hide_index=True, use_container_width=True)
     else:
         st.info("No active insider entries matching watchlist.")
 
 with t2:
     st.subheader("Political Trades")
-    if df_poly is not None and not df_poly.empty:
+    if not df_poly.empty:
         st.dataframe(df_poly, hide_index=True, use_container_width=True)
     else:
         st.info("No political data found for these assets.")
 
 with t3:
     st.subheader("Whale Blocks")
-    if df_whale is not None and not df_whale.empty:
+    if not df_whale.empty:
         st.dataframe(df_whale, hide_index=True, use_container_width=True)
     else:
         st.info("No active block data matching watchlist.")
