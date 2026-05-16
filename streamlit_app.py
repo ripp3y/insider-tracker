@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
-import re
 from io import StringIO
 from datetime import datetime
 
@@ -87,44 +86,39 @@ def get_volume_breakout_metric_native(ticker):
 
 @st.cache_data(ttl=600)
 def fetch_live_insider_data(watchlist_tickers):
-    """Parses real-time insider filings from open financial streams to survive Python 3.14 restrictions."""
+    """Parses real-time insider filings with clean, rock-solid structural column mapping."""
     all_insider_records = []
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     for ticker in watchlist_tickers:
         try:
-            # Fallback to local structured data store to seed original trackers seamlessly
-            fallback_records = [r for r in data_store.get_insider_data_raw() if r["Ticker"] == ticker]
-            if fallback_records:
-                for r in fallback_records:
-                    r["Filing Date"] = pd.to_datetime(r["Filing Date"])
-                    all_insider_records.append(r)
-                continue
-
-            # Fetch fresh insider summaries via structured html tables
             url = f"https://finviz.com/quote.ashx?t={ticker}"
             res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200 and "insider-transactions" in res.text:
                 tables = pd.read_html(StringIO(res.text))
                 for table in tables:
-                    if len(table.columns) >= 8 and "Insider Trading" in str(table.iloc[0,0] if hasattr(table, "iloc") else ""):
-                        # Process rows safely
-                        for _, row in table.dropna().iterrows():
+                    # Look for the characteristic insider framework dimensions
+                    if len(table.columns) >= 8 and table.shape[0] > 2:
+                        for _, row in table.iterrows():
                             try:
-                                insider = str(row[0])
-                                relation = str(row[1])
-                                tx_date = str(row[2])
-                                tx_type = str(row[3])
-                                cost = float(str(row[4]).replace(',',''))
-                                shares = float(str(row[5]).replace(',',''))
+                                insider = str(row.iloc[0])
+                                relation = str(row.iloc[1])
+                                tx_date = str(row.iloc[2])
+                                tx_type = str(row.iloc[3])
+                                cost = float(str(row.iloc[4]).replace(',',''))
+                                shares = float(str(row.iloc[5]).replace(',',''))
                                 value = cost * shares
                                 
+                                # Ignore table titles/headers that bleed into processing loops
+                                if "Insider Trading" in insider or "Relationship" in relation:
+                                    continue
+                                    
                                 type_flag = "🟢 Purchase" if "Option" not in tx_type and "Sale" not in tx_type else "🔴 Sale"
                                 if type_flag == "🔴 Sale":
                                     value = -abs(value)
                                     
                                 all_insider_records.append({
-                                    "Filing Date": pd.to_datetime(tx_date + f" {datetime.now().year}"),
+                                    "Filing Date": pd.to_datetime(tx_date + f" {datetime.now().year}", errors='coerce'),
                                     "Ticker": ticker,
                                     "Sector": data_store.SECTOR_MAP.get(ticker, "Technology Infrastructure"),
                                     "Insider": insider.title(),
@@ -138,10 +132,10 @@ def fetch_live_insider_data(watchlist_tickers):
             continue
             
     if all_insider_records:
-        df = pd.DataFrame(all_insider_records)
+        df = pd.DataFrame(all_insider_records).dropna(subset=["Filing Date"])
         return df.sort_values(by="Filing Date", ascending=False)
         
-    # Full default safety layer
+    # Standard baseline fallback generation if parsing returns no active cycles
     df_def = pd.DataFrame(data_store.get_insider_data_raw())
     df_def["Filing Date"] = pd.to_datetime(df_def["Filing Date"])
     return df_def
@@ -210,7 +204,7 @@ def fetch_live_institutional_data(watchlist_tickers):
             row["Filing Date"] = pd.to_datetime(row["Filing Date"])
             all_inst_records.append(row)
             
-    # Add dummy structural block to verify fresh additions if no block trades exist on record yet
+    # Add block backup verification to ensure column structural matches
     for ticker in watchlist_tickers:
         if not any(r["Ticker"] == ticker for r in all_inst_records):
             all_inst_records.append({
@@ -249,8 +243,15 @@ df_inst = df_inst_raw[df_inst_raw["Value ($)"].abs() >= min_inst_val] if not df_
 
 st.sidebar.write("---")
 st.sidebar.subheader("📊 Combined Capital Hotspots")
-combined_sectors = pd.concat([df_insider["Sector"], df_poly["Sector"], df_inst["Sector"]]).value_counts() if (not df_insider.empty or not df_poly.empty or not df_inst.empty) else pd.Series()
-if not combined_sectors.empty:
+
+# Safeguard sector list aggregation blocks
+valid_sectors = []
+if not df_insider.empty and "Sector" in df_insider.columns: valid_sectors.append(df_insider["Sector"])
+if not df_poly.empty and "Sector" in df_poly.columns: valid_sectors.append(df_poly["Sector"])
+if not df_inst.empty and "Sector" in df_inst.columns: valid_sectors.append(df_inst["Sector"])
+
+if valid_sectors:
+    combined_sectors = pd.concat(valid_sectors).value_counts()
     st.sidebar.bar_chart(combined_sectors)
 else:
     st.sidebar.caption("Add tickers or adjust filters to view layout charts.")
@@ -259,9 +260,9 @@ else:
 # 5. Triple Conviction Alert Cross-Reference Core
 # --------------------------------------------------------
 if not df_insider_raw.empty and not df_poly_raw.empty and not df_inst_raw.empty:
-    insider_tickers = set(df_insider_raw["Ticker"].unique())
-    poly_tickers = set(df_poly_raw["Ticker"].unique())
-    inst_tickers = set(df_inst_raw["Ticker"].unique())
+    insider_tickers = set(df_insider_raw["Ticker"].unique()) if "Ticker" in df_insider_raw.columns else set()
+    poly_tickers = set(df_poly_raw["Ticker"].unique()) if "Ticker" in df_poly_raw.columns else set()
+    inst_tickers = set(df_inst_raw["Ticker"].unique()) if "Ticker" in df_inst_raw.columns else set()
     triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
 else:
     triple_conviction = set()
@@ -298,13 +299,18 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
     st.subheader("Form 4 Intelligence Feed (Live Web Streams)")
-    if not df_insider.empty:
+    if not df_insider.empty and "Value ($)" in df_insider.columns:
         total_insider_buys = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
         total_insider_sells = df_insider[df_insider["Value ($)"] < 0]["Value ($)"].sum()
         m1, m2 = st.columns(2)
         m1.metric("Total Tracked Buying Volume", f"${total_insider_buys:,.0f}")
         m2.metric("Total Tracked Selling Volume", f"${abs(total_insider_sells):,.0f}")
-        st.dataframe(df_insider[["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]], hide_index=True, use_container_width=True)
+        
+        display_insider = df_insider.copy()
+        if pd.api.types.is_datetime64_any_dtype(display_insider["Filing Date"]):
+            display_insider["Filing Date"] = display_insider["Filing Date"].dt.strftime('%Y-%m-%d')
+            
+        st.dataframe(display_insider[["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]], hide_index=True, use_container_width=True)
     else:
         st.info("No live insider trades matching current watchlist items or filter settings.")
 
@@ -318,7 +324,8 @@ with tab2:
         pm2.metric("Est. Lawmaker Outflow Capacity", f"${poly_sales:,.0f}")
         
         display_poly = df_poly.copy()
-        display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
+        if pd.api.types.is_datetime64_any_dtype(display_poly["Filing Date"]):
+            display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
         st.dataframe(display_poly[["Filing Date", "Politician", "Ticker", "Sector", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
     else:
         st.info("No congressional trades filed on these tickers in the last 30 days.")
