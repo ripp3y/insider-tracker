@@ -11,31 +11,26 @@ st.caption("Alpha Tracking Dashboard")
 
 DEFAULT_TICKERS = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-# --- URL-BASED PERMANENT STORAGE ---
-# Read directly from the browser URL parameter string on launch
+# --- URL STORAGE CONTROL ---
 qp = st.query_params
-
 if "list" in qp and qp["list"].strip():
-    # If tickers exist in the URL, pull them instantly
     current_wl = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
 else:
-    # Otherwise, fall back to default assets
     current_wl = DEFAULT_TICKERS.copy()
     st.query_params["list"] = ",".join(current_wl)
 
-# Sync to session state
 st.session_state.watchlist = current_wl
 wl = st.session_state.watchlist
 
 
-# --- DYNAMIC DATA ENGINE ---
+# --- DYNAMIC DATA RETRIEVAL ENGINE ---
 @st.cache_data(ttl=300)
 def get_clean_data(watchlist_symbols):
-    # Pass the active watchlist straight into the data store queries
+    # Pass the live watchlist directly down into your data_store functions
     try:
         df_i = pd.DataFrame(data_store.get_insider_data_raw(watchlist_symbols))
     except TypeError:
-        # Fallback if your data_store function doesn't accept arguments yet
+        # Fallback if the data_store function doesn't accept arguments yet
         df_i = pd.DataFrame(data_store.get_insider_data_raw())
 
     try:
@@ -48,26 +43,20 @@ def get_clean_data(watchlist_symbols):
     except TypeError:
         df_w = pd.DataFrame(data_store.get_institutional_data_raw())
 
-    # Standardize string casing rules uniformly across all frames
-    if not df_i.empty and "Ticker" in df_i.columns:
-        df_i["Ticker"] = df_i["Ticker"].astype(str).str.upper().str.strip()
-    if not df_p.empty and "Ticker" in df_p.columns:
-        df_p["Ticker"] = df_p["Ticker"].astype(str).str.upper().str.strip()
-    if not df_w.empty and "Ticker" in df_w.columns:
-        df_w["Ticker"] = df_w["Ticker"].astype(str).str.upper().str.strip()
+    # Standardize 'Ticker' columns safely
+    for df in [df_i, df_p, df_w]:
+        if df is not None and not df.empty:
+            t_col = next((c for c in df.columns if str(c).lower() in ["ticker", "symbol"]), None)
+            if t_col:
+                df.rename(columns={t_col: "Ticker"}, inplace=True)
+                df["Ticker"] = df["Ticker"].astype(str).str.strip().str.upper()
 
     return df_i, df_p, df_w
 
-# Pass the live URL watchlist 'wl' straight into the engine on run
+# Run data fetch with the active watchlist
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
-# Final safety filter match
-df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
-df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
-df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
-
-
-# Dataframe slices matching the URL watchlist
+# Final filter slice
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
@@ -81,7 +70,7 @@ if not df_insider.empty and "Value ($)" in df_insider.columns:
     df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider]
 
 
-# --- VIEWPORTS SYSTEM ---
+# --- TABS UI ---
 t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
 with t1:
@@ -122,7 +111,6 @@ with t5:
     if submitted and new_tk:
         if new_tk not in st.session_state.watchlist:
             st.session_state.watchlist.append(new_tk)
-            # Instantly bake the new list right into the browser URL bar
             st.query_params["list"] = ",".join(st.session_state.watchlist)
             st.rerun()
             
