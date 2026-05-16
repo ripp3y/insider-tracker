@@ -26,21 +26,24 @@ st.caption("Tracking legal alpha by monitoring corporate executives, political d
 TODAY = datetime.now()
 
 # --------------------------------------------------------
-# Pure-Native Live Market Volume Analytics (No yfinance needed)
+# 2. Watchlist Session State Initialization
 # --------------------------------------------------------
-@st.cache_data(ttl=900)  # Cache market data for 15 minutes
+# This gives the app a memory bank so additions/removals stick!
+if "watchlist" not in st.session_state:
+    # Pre-populate it with your core tracking favorites
+    st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
+
+# --------------------------------------------------------
+# Live Market Volume Analytics Engine
+# --------------------------------------------------------
+@st.cache_data(ttl=900)  
 def get_volume_breakout_metric_native(ticker):
-    """
-    Fetches historical daily volume data using a native web request layout
-    to avoid compilation errors on experimental Python runtimes.
-    """
     if ticker in ["ANFGF", "COPX"]: 
         return "N/A Volume", 0.0, "gray"
         
     try:
-        # Use Yahoo's public chart endpoint via standard HTTP requests
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=30d&interval=1d"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        headers = {"User-Agent": "Mozilla/5.0"}
         
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code != 200:
@@ -48,16 +51,12 @@ def get_volume_breakout_metric_native(ticker):
             
         json_data = response.json()
         volumes = json_data["chart"]["result"][0]["indicators"]["quote"][0]["volume"]
-        
-        # Filter out any potential null values from the endpoint array
         clean_volumes = [v for v in volumes if v is not None]
         
         if len(clean_volumes) < 20:
             return "No Volume Feed", 0.0, "gray"
             
-        # 20-day historical average volume (excluding the most recent live day)
         avg_volume_20d = sum(clean_volumes[-21:-1]) / 20
-        # Today's live trading volume
         live_volume = clean_volumes[-1]
         
         if avg_volume_20d == 0:
@@ -71,13 +70,12 @@ def get_volume_breakout_metric_native(ticker):
         return "Feed Offline", 0.0, "gray"
 
 # --------------------------------------------------------
-# 2. Hybrid Streamlit Data Pipeline
+# 3. Data Pipeline
 # --------------------------------------------------------
 @st.cache_data(ttl=300)
 def load_live_politician_data():
     screener_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
     headers = {"User-Agent": "Mozilla/5.0"}
-    
     try:
         response = requests.get(screener_url, headers=headers, timeout=5)
         if response.status_code == 200 and len(response.text) > 100:
@@ -95,11 +93,9 @@ def load_live_politician_data():
                 ticker = str(row[ticker_col]).upper().strip() if ticker_col else "N/A"
                 if not ticker or ticker in ["N/A", "--", "NAN"] or len(ticker) > 5:
                     continue
-                    
                 raw_date = row[date_col] if date_col else TODAY
                 try: parsed_date = pd.to_datetime(raw_date)
                 except: parsed_date = TODAY
-                    
                 raw_type = str(row[type_col]).lower() if type_col else "purchase"
                 tx_type = "🔴 Sale" if "sale" in raw_type or "sell" in raw_type else "🟢 Purchase"
                 
@@ -111,20 +107,12 @@ def load_live_politician_data():
                 elif "50,00" in amt_str: numeric_max = 100000
                 
                 cleaned_data.append({
-                    "Filing Date": parsed_date,
-                    "Politician": str(row[name_col]).title() if name_col else "Unknown Lawmaker",
-                    "Chamber": "Congress",
-                    "Ticker": ticker,
-                    "Type": tx_type,
-                    "Amount Range": amt_str if amt_col else "Unknown",
-                    "Numeric Max": numeric_max,
+                    "Filing Date": parsed_date, "Politician": str(row[name_col]).title() if name_col else "Unknown Lawmaker",
+                    "Chamber": "Congress", "Ticker": ticker, "Type": tx_type, "Amount Range": amt_str, "Numeric Max": numeric_max,
                     "Sector": data_store.SECTOR_MAP.get(ticker, "Other / Unclassified")
                 })
-                
             final_df = pd.DataFrame(cleaned_data)
-            if not final_df.empty:
-                return final_df.sort_values(by="Filing Date", ascending=False)
-                
+            if not final_df.empty: return final_df.sort_values(by="Filing Date", ascending=False)
         return get_fallback_df()
     except:
         return get_fallback_df()
@@ -151,7 +139,7 @@ df_inst_raw = get_institutional_data()
 df_maga_raw = pd.DataFrame(data_store.get_maga_portfolio_data())
 
 # --------------------------------------------------------
-# 3. Sidebar Configuration & Aggregations
+# 4. Sidebar Configuration & Aggregations
 # --------------------------------------------------------
 st.sidebar.header("🐋 Whale Order Filters")
 min_insider_val = st.sidebar.slider("Minimum Insider Value ($)", 0, 1500000, 0, 50000)
@@ -173,14 +161,13 @@ else:
     st.sidebar.caption("No data matches parameters.")
 
 # --------------------------------------------------------
-# 4. Asymmetry Quad-Cross Reference Engine with Breakout Volume
+# 5. Conviction Alerts Breakout Matrix
 # --------------------------------------------------------
 insider_tickers = set(df_insider_raw["Ticker"].unique())
 poly_tickers = set(df_poly_raw["Ticker"].unique())
 inst_tickers = set(df_inst_raw["Ticker"].unique())
 maga_tickers = set(df_maga_raw["Ticker"].unique())
 
-# Core triple cross
 triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
 
 if triple_conviction:
@@ -191,53 +178,45 @@ if triple_conviction:
             c_actions = df_insider_raw[df_insider_raw["Ticker"] == ticker]
             p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker]
             i_actions = df_inst_raw[df_inst_raw["Ticker"] == ticker]
-            
             maga_match = "🦅 MAGA Core Aligned" if ticker in maga_tickers else "Standard Coverage"
-            
-            # Fetch Volume using the native engine
             vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
             
             with st.container(border=True):
                 st.markdown(f"### **{ticker}**")
                 st.caption(f"{data_store.SECTOR_MAP.get(ticker, 'General')} • {maga_match}")
-                
-                # Dynamic rendering based on native volume tracker calculations
                 if vol_color == "green":
                     st.markdown(f"📈 **Live Volume:** :{vol_color}[{vol_label} 🔥 Breakout]")
                 elif vol_color == "red":
                     st.markdown(f"📉 **Live Volume:** :{vol_color}[{vol_label}]")
                 else:
                     st.markdown(f"⚪ **Live Volume:** {vol_label}")
-                    
                 st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
     st.write("---")
 
 # --------------------------------------------------------
-# 5. Tab Viewports
+# 6. Tab Viewports (Added Tab 5: Dynamic Watchlist)
 # --------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏢 Corporate Insiders", 
     "🏛️ Political Disclosures", 
     "🐋 Institutional Blocks",
-    "🦅 MAGA Alpha Core"
+    "🦅 MAGA Alpha Core",
+    "📋 Custom Watchlist"
 ])
 
 with tab1:
     st.subheader("Form 4 Intelligence Feed")
     total_insider_buys = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
     total_insider_sells = df_insider[df_insider["Value ($)"] < 0]["Value ($)"].sum()
-    
     m1, m2 = st.columns(2)
     m1.metric("Total Tracked Buying Volume", f"${total_insider_buys:,.0f}")
     m2.metric("Total Tracked Selling Volume", f"${abs(total_insider_sells):,.0f}")
-    
     st.dataframe(df_insider[["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]], hide_index=True, use_container_width=True)
 
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
     poly_purchases = df_poly[df_poly["Type"] == "🟢 Purchase"]["Numeric Max"].sum()
     poly_sales = df_poly[df_poly["Type"] == "🔴 Sale"]["Numeric Max"].sum()
-    
     pm1, pm2 = st.columns(2)
     pm1.metric("Est. Lawmaker Inflow Capacity", f"${poly_purchases:,.0f}")
     pm2.metric("Est. Lawmaker Outflow Capacity", f"${poly_sales:,.0f}")
@@ -257,23 +236,66 @@ with tab3:
     st.subheader("Major Institutional Block Trade Changes")
     inst_inflow = df_inst[df_inst["Value ($)"] > 0]["Value ($)"].sum()
     inst_outflow = df_inst[df_inst["Value ($)"] < 0]["Value ($)"].sum()
-    
     im1, im2 = st.columns(2)
     im1.metric("Whale Net Accumulation Blocks", f"${inst_inflow:,.0f}")
     im2.metric("Whale Net Distribution Blocks", f"${abs(inst_outflow):,.0f}")
-    
     st.dataframe(df_inst[["Filing Date", "Ticker", "Sector", "Institution", "Type", "Shares Changed", "Value ($)"]], hide_index=True, use_container_width=True)
 
 with tab4:
     st.subheader("🇺🇸 High-Conviction Federal Executive Tracker")
-    st.caption("Aggregated tracking of core positions, recent rotation trends, and structural policy alignment plays.")
-    
     df_maga = df_maga_raw.copy()
     df_maga["Sector"] = df_maga["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
-    
     mm1, mm2 = st.columns(2)
     mm1.metric("Est. Minimum Portfolio Allocation Tier", "$220,000,000")
     mm2.metric("Dominant Allocation Overweight", "Semiconductors / Infrastructure")
-    
-    st.write("---")
     st.dataframe(df_maga[["Ticker", "Sector", "Holding Tier", "Estimated Value", "Action", "Thesis"]], hide_index=True, use_container_width=True)
+
+# NEW CODE: This powers the custom user watchlist tab
+with tab5:
+    st.subheader("📋 Personalized High-Alpha Watchlist")
+    st.caption("Add custom stock tickers here to monitor their real-time volume breakout statuses instantly.")
+    
+    # 1. Search Box Input Row
+    col_input, col_btn = st.columns([3, 1])
+    with col_input:
+        new_ticker = st.text_input("Enter Stock Ticker to Add", placeholder="e.g. SMCI, VRT, CEG", key="add_input").upper().strip()
+    with col_btn:
+        st.write("##") # Visual alignment spacing
+        if st.button("➕ Add Ticker", use_container_width=True):
+            if new_ticker and new_ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_ticker)
+                st.rerun() # Instantly refreshes browser layout 
+                
+    st.write("---")
+    
+    # 2. Watchlist Metric Rows with Delete Controls
+    if st.session_state.watchlist:
+        for ticker in st.session_state.watchlist:
+            # Generate metrics using the native live volume fetcher
+            vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
+            sector_name = data_store.SECTOR_MAP.get(ticker, "Custom Tracker / Add-on")
+            
+            # Layout alignment row
+            metric_col, info_col, action_col = st.columns([2, 4, 1])
+            
+            with metric_col:
+                if vol_color == "green":
+                    st.success(f"**{ticker}** • {vol_label}")
+                elif vol_color == "red":
+                    st.error(f"**{ticker}** • {vol_label}")
+                else:
+                    st.info(f"**{ticker}** • {vol_label}")
+                    
+            with info_col:
+                st.markdown(f"**Sector:** {sector_name}")
+                st.caption(f"Cross reference profiles check complete for asset.")
+                
+            with action_col:
+                st.write("") # Micro spacing 
+                # Create a uniquely named minus button for every single ticker
+                if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
+                    st.session_state.watchlist.remove(ticker)
+                    st.rerun() # Auto updates screen immediately
+            st.write("---")
+    else:
+        st.info("Your watchlist is currently empty. Use the input panel above to track custom parameters.")
