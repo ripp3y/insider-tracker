@@ -4,7 +4,7 @@ import requests
 from datetime import datetime, timedelta
 
 # --------------------------------------------------------
-# 1. Page Configuration & Responsive Mobile UI
+# 1. Page Configuration & UI Settings
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -12,6 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
+# Dark theme structural accents
 st.html(
     """
     <style>
@@ -29,57 +30,51 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 TODAY = datetime.now()
 
 # --------------------------------------------------------
-# 2. Live Capitol Trades Hidden API Connection Engine
+# 2. Bulletproof Live Data Stream - Congress Disclosures
 # --------------------------------------------------------
-@st.cache_data(ttl=1800)  
+@st.cache_data(ttl=3600)  # Caches for 1 hour to keep mobile loading lightning fast
 def load_live_politician_data():
     try:
-        # Hitting the raw JSON data warehouse directly to bypass Cloudflare and HTML scraping
-        url = "https://api.capitoltrades.com/trades?per_page=100"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"
-        }
+        # High-availability, community-maintained master file of all stock trades
+        url = "https://raw.githubusercontent.com/datasets/congress-stock-trades/master/trades.csv"
         
-        response = requests.get(url, headers=headers, timeout=10)
-        json_data = response.json()
-        raw_trades = json_data.get("data", [])
+        # Pull data down using requests to avoid silent download failures
+        headers = {"User-Agent": "Mozilla/5.0"}
+        req = requests.get(url, headers=headers, timeout=10)
         
-        processed_data = []
-        for trade in raw_trades:
-            # Safely navigate nested JSON object parameters
-            pub_date = trade.get("pubDate")
-            politician_info = trade.get("politician", {})
-            asset_info = trade.get("asset", {})
-            
-            first_name = politician_info.get("firstName", "")
-            last_name = politician_info.get("lastName", "")
-            chamber = politician_info.get("chamber", "Unknown")
-            
-            ticker = asset_info.get("ticker", "N/A")
-            tx_type = trade.get("txType", "Unknown")
-            value_range = trade.get("valueRange", "Unknown")
-            
-            processed_data.append({
-                "Filing Date": pub_date,
-                "Politician": f"{first_name} {last_name}".strip(),
-                "Chamber": str(chamber).capitalize(),
-                "Ticker": str(ticker).upper().strip(),
-                "Type": str(tx_type).capitalize(),
-                "Amount Range": str(value_range).replace("_", " ")
-            })
-            
-        df = pd.DataFrame(processed_data)
-        df["Filing Date"] = pd.to_datetime(df["Filing Date"], errors='coerce')
-        df = df.dropna(subset=["Filing Date"])
-        df = df.sort_values(by="Filing Date", ascending=False)
-        return df
+        # Read the raw CSV text into pandas
+        from io import StringIO
+        df = pd.read_csv(StringIO(req.text))
+        
+        # Map the dataset columns to our app layout
+        df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
+        df = df.dropna(subset=["Filing Date", "ticker"])
+        
+        df = df.rename(columns={
+            "politician": "Politician",
+            "chamber": "Chamber",
+            "ticker": "Ticker",
+            "type": "Type",
+            "amount": "Amount Range"
+        })
+        
+        # Standardize strings for filtering
+        df["Ticker"] = df["Ticker"].astype(str).str.upper().str.strip()
+        df["Chamber"] = df["Chamber"].astype(str).str.capitalize()
+        df["Type"] = df["Type"].astype(str).str.capitalize()
+        
+        # Clean up formatting for visual appeal
+        df["Type"] = df["Type"].replace({"Purchase": "🟢 Purchase", "Sale_partial": "🔴 Partial Sale", "Sale_full": "🔴 Full Sale"})
+        
+        return df.sort_values(by="Filing Date", ascending=False)
         
     except Exception as e:
-        # Fallback seamless integration layer in case of API connection timeouts
+        # Emergency backup tier so the app never goes completely dark
+        st.sidebar.error(f"Live feed offline. Using backup. Error: {e}")
         fallback_data = [
-            {"Filing Date": TODAY - timedelta(days=2), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "Purchase", "Amount Range": "15001-50000"},
-            {"Filing Date": TODAY - timedelta(days=5), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "Purchase", "Amount Range": "1000001-5000000"},
-            {"Filing Date": TODAY - timedelta(days=6), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "TXN", "Type": "Purchase", "Amount Range": "50001-100000"}
+            {"Filing Date": TODAY - timedelta(days=1), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,000"},
+            {"Filing Date": TODAY - timedelta(days=4), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,000,001 - $5,000,000"},
+            {"Filing Date": TODAY - timedelta(days=5), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "TXN", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000"}
         ]
         df_fall = pd.DataFrame(fallback_data)
         df_fall["Filing Date"] = pd.to_datetime(df_fall["Filing Date"])
@@ -120,6 +115,7 @@ with tab1:
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
     
+    # 1. Date Horizon Selector
     time_frame = st.selectbox(
         "Select Time Window",
         ["Past 30 Days", "Past 60 Days", "Past 90 Days", "All Disclosed History"],
@@ -135,23 +131,23 @@ with tab2:
     else:
         cutoff_date = datetime(2010, 1, 1)
         
-    # Trigger the real live network fetch via hidden API
+    # Run data loader
     df_poly = load_live_politician_data()
     
-    # Filter records dynamically by date threshold
+    # Apply date cutoff filter
     df_poly_filtered = df_poly[df_poly["Filing Date"] >= cutoff_date]
     
-    # Text input for targeted watchlist search
+    # 2. Watchlist Stock Ticker Filter Search
     ticker_search = st.text_input("🔍 Filter by Stock Ticker (e.g. NVDA, MSFT)", "").upper().strip()
     if ticker_search:
         df_poly_filtered = df_poly_filtered[df_poly_filtered["Ticker"] == ticker_search]
     
-    # Chamber Segment Filtering
+    # 3. Legislative Chamber Multi-Select Filter
     chamber_filter = st.multiselect("Filter by Chamber", ["Senate", "House"], default=["Senate", "House"])
     mask = df_poly_filtered["Chamber"].str.contains("|".join(chamber_filter), case=False, na=False)
     df_poly_final = df_poly_filtered[mask].copy()
     
-    # Clean up dates for the presentation layer table view
+    # Format date display beautifully for table view
     df_poly_final["Filing Date"] = df_poly_final["Filing Date"].dt.strftime('%Y-%m-%d')
     
     st.dataframe(
