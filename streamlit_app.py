@@ -117,10 +117,10 @@ with t4:
 with t5:
     st.subheader("Watchlist Manager")
     
-    # Inline form setup to capture phone inputs smoothly
+    # Corrected native method: form_submit_button
     with st.form("add_ticker_form", clear_on_submit=True):
         new_tk = st.text_input("Enter Ticker Symbol:").upper().strip()
-        submitted = st.form_submit_with_button("➕ Add to Watchlist")
+        submitted = st.form_submit_button("➕ Add to Watchlist")
         
     if submitted and new_tk:
         if new_tk not in st.session_state.watchlist:
@@ -133,3 +133,4 @@ with t5:
     if st.button("🗑️ Reset Watchlist"):
         st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
         st.rerun()
+
