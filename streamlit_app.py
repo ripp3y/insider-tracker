@@ -2,20 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
-import sys
-import subprocess
 from io import StringIO
 from datetime import datetime
-
-# --------------------------------------------------------
-# Zero-Failure Dependency Auto-Installer
-# --------------------------------------------------------
-try:
-    import yfinance as yf
-except ImportError:
-    # If the Streamlit environment missed the requirements file, force it here
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "yfinance"])
-    import yfinance as yf
 
 # Import clean structural data arrays
 import data_store
@@ -38,42 +26,49 @@ st.caption("Tracking legal alpha by monitoring corporate executives, political d
 TODAY = datetime.now()
 
 # --------------------------------------------------------
-# Live Market Volume Analytics (Breakout Engine)
+# Pure-Native Live Market Volume Analytics (No yfinance needed)
 # --------------------------------------------------------
 @st.cache_data(ttl=900)  # Cache market data for 15 minutes
-def get_volume_breakout_metric(ticker):
+def get_volume_breakout_metric_native(ticker):
     """
-    Compares today's live volume against the 20-day average volume.
-    Returns formatted string, percentage float, and a color flag.
+    Fetches historical daily volume data using a native web request layout
+    to avoid compilation errors on experimental Python runtimes.
     """
     if ticker in ["ANFGF", "COPX"]: 
         return "N/A Volume", 0.0, "gray"
         
     try:
-        stock = yf.Ticker(ticker)
-        # Fetch 30 days of daily data to safely compute a 20-day average
-        hist = stock.history(period="30d")
+        # Use Yahoo's public chart endpoint via standard HTTP requests
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=30d&interval=1d"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         
-        if hist.empty or len(hist) < 20:
-            return "No Volume Data", 0.0, "gray"
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code != 200:
+            return "Data Restricted", 0.0, "gray"
             
-        # Calculate 20-day average volume (excluding the most recent day)
-        avg_volume_20d = hist["Volume"].iloc[-21:-1].mean()
-        # Get current day live volume
-        live_volume = hist["Volume"].iloc[-1]
+        json_data = response.json()
+        volumes = json_data["chart"]["result"][0]["indicators"]["quote"][0]["volume"]
+        
+        # Filter out any potential null values from the endpoint array
+        clean_volumes = [v for v in volumes if v is not None]
+        
+        if len(clean_volumes) < 20:
+            return "No Volume Feed", 0.0, "gray"
+            
+        # 20-day historical average volume (excluding the most recent live day)
+        avg_volume_20d = sum(clean_volumes[-21:-1]) / 20
+        # Today's live trading volume
+        live_volume = clean_volumes[-1]
         
         if avg_volume_20d == 0:
             return "0 Avg Vol", 0.0, "gray"
             
-        # Percent calculation
         pct_of_avg = (live_volume / avg_volume_20d) * 100
-        
-        # Color state based on breakout performance
         color = "green" if pct_of_avg >= 100 else "red"
         
         return f"{pct_of_avg:.1f}% of 20D Avg", pct_of_avg, color
     except:
-        return "Market Closed/Error", 0.0, "gray"
+        return "Feed Offline", 0.0, "gray"
 
 # --------------------------------------------------------
 # 2. Hybrid Streamlit Data Pipeline
@@ -199,20 +194,20 @@ if triple_conviction:
             
             maga_match = "🦅 MAGA Core Aligned" if ticker in maga_tickers else "Standard Coverage"
             
-            # Fetch Live Volumetric Metrics
-            vol_label, vol_val, vol_color = get_volume_breakout_metric(ticker)
+            # Fetch Volume using the native engine
+            vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
             
             with st.container(border=True):
                 st.markdown(f"### **{ticker}**")
                 st.caption(f"{data_store.SECTOR_MAP.get(ticker, 'General')} • {maga_match}")
                 
-                # Render color-coded break status
+                # Dynamic rendering based on native volume tracker calculations
                 if vol_color == "green":
                     st.markdown(f"📈 **Live Volume:** :{vol_color}[{vol_label} 🔥 Breakout]")
                 elif vol_color == "red":
                     st.markdown(f"📉 **Live Volume:** :{vol_color}[{vol_label}]")
                 else:
-                    st.markdown(f" Privatized / Asset Volume N/A")
+                    st.markdown(f"⚪ **Live Volume:** {vol_label}")
                     
                 st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
     st.write("---")
