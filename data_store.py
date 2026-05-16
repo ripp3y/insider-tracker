@@ -82,6 +82,6 @@ def get_maga_portfolio_data():
         {"Ticker": "GS", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Institutional Entry", "Thesis": "Financial Sector Deregulation"},
         {"Ticker": "JPM", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Institutional Entry", "Thesis": "Financial Sector Deregulation"},
         {"Ticker": "V", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Steady Hold", "Thesis": "Consumer Credit Scaling Mandates"},
-        {"电影": "MSFT", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"},
+        {"Ticker": "MSFT", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"},
         {"Ticker": "META", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"}
     ]
