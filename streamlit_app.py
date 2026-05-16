@@ -35,9 +35,9 @@ if st.sidebar.button("🔄 Force Hard Refresh", use_container_width=True):
 # --------------------------------------------------------
 # 3. High-Availability Streaming Politician Data Engine
 # --------------------------------------------------------
-@st.cache_data(ttl=60) # Tightened cache loop down to 60 seconds
+@st.cache_data(ttl=60)
 def load_live_politician_data(cache_buster):
-    # Appending the unique time signature prevents the cloud server from serving cached assets
+    # Dynamic streaming flat-file target mirror
     live_csv_url = f"https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv?v={cache_buster}"
     
     headers = {
@@ -51,8 +51,23 @@ def load_live_politician_data(cache_buster):
             from io import StringIO
             df = pd.read_csv(StringIO(response.text))
             
-            df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
-            df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
+            # --- Robust Column Structural Mapping Fix ---
+            # Handles 'representative', 'politician', or fallback strings seamlessly
+            if "representative" in df.columns:
+                df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
+            elif "politician" in df.columns:
+                df["Politician"] = df["politician"].fillna("Unknown Lawmaker")
+            else:
+                df["Politician"] = "Unknown Lawmaker"
+                
+            if "disclosure_date" in df.columns:
+                df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
+            elif "filing_date" in df.columns:
+                df["Filing Date"] = pd.to_datetime(df["filing_date"], errors='coerce')
+            else:
+                df["Filing Date"] = pd.to_datetime(df["disclosure_year"], errors='coerce')
+
+            # Standardized layout parsing
             df["Chamber"] = "House"
             df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
             
@@ -60,6 +75,7 @@ def load_live_politician_data(cache_buster):
             df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
             df["Amount Range"] = df["amount"].fillna("Unknown").astype(str)
             
+            # Clean dataframe operational bounds
             df = df.dropna(subset=["Filing Date"])
             df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
             
@@ -122,7 +138,6 @@ with tab1:
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
     
-    # Generates a dynamic parameter based on current minute to shatter caching blocks
     current_minute_key = time.strftime("%Y%m%d-%H%M")
     df_poly = load_live_politician_data(current_minute_key)
     
