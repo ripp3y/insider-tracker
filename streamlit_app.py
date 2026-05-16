@@ -25,9 +25,52 @@ wl = st.session_state.watchlist
 
 @st.cache_data(ttl=300)
 def get_clean_data():
+    # 1. Initialize Baseline Core Datasets
     ins = pd.DataFrame(data_store.get_insider_data_raw())
     poly = pd.DataFrame(data_store.get_fallback_political_data())
     whale = pd.DataFrame(data_store.get_institutional_data_raw())
+    
+    # Standardize primary key column across data sources
+    for df in [ins, poly, whale]:
+        if not df.empty and "Ticker" in df.columns:
+            df["Ticker"] = df["Ticker"].astype(str).str.upper().str.strip()
+
+    # 2. Dynamic Live Congress Feed Parse
+    try:
+        r = requests.get("https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv", timeout=3)
+        if r.status_code == 200 and len(r.text) > 100:
+            df_c = pd.read_csv(StringIO(r.text))
+            df_c.columns = [str(c).strip().lower() for c in df_c.columns]
+            
+            t_col = next((c for c in df_c.columns if c in ["ticker", "symbol"]), None)
+            n_col = next((c for c in df_c.columns if c in ["politician", "representative", "name"]), None)
+            v_col = next((c for c in df_c.columns if c in ["amount", "range"]), None)
+            ty_col = next((c for c in df_c.columns if c in ["type", "transaction"]), None)
+            
+            if t_col and n_col:
+                df_c[t_col] = df_c[t_col].astype(str).str.upper().str.strip()
+                df_fil = df_c[df_c[t_col].isin(wl)].copy()
+                if not df_fil.empty:
+                    poly = pd.DataFrame({
+                        "Filing Date": "Live Feed",
+                        "Politician": df_fil[n_col].astype(str).str.title(),
+                        "Chamber": "Congress",
+                        "Ticker": df_fil[t_col],
+                        "Type": df_fil[ty_col].fillna("Purchase").apply(lambda x: "🔴 Sale" if "sel" in str(x).lower() else "🟢 Purchase"),
+                        "Amount Range": df_fil[v_col].fillna("$15k-$50k"),
+                        "Numeric Max": 50000,
+                        "Sector": "Infrastructure / Tech"
+                    })
+    except:
+        pass
+        
+    # 3. Defensive Watchlist Intersect
+    ins_f = ins[ins["Ticker"].isin(wl)] if not ins.empty else ins
+    poly_f = poly[poly["Ticker"].isin(wl)] if not poly.empty else poly
+    whale_f = whale[whale["Ticker"].isin(wl)] if not whale.empty else whale
+        
+    return ins_f, poly_f, whale_f
+
     
     try:
         r = requests.get("https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv", timeout=3)
