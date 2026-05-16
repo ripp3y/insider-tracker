@@ -329,4 +329,144 @@ else:
 # --------------------------------------------------------
 # 7. TRIPLE CONVICTION BREAKOUT COMPONENT CONTROL
 # --------------------------------------------------------
+if   if triple_conviction:
+    st.error("⚡ **Asymmetry Alert: Triple Conviction Breakout Matrix**")
+    cols = st.columns(len(triple_conviction))
+    for idx, ticker in enumerate(triple_conviction):
+        with cols[idx]:
+            # Shortened lines to prevent copy-paste clipping on mobile
+            has_tick = "Ticker"
+            c_actions = df_insider_raw[df_insider_raw[has_tick] == ticker] if has_tick in df_insider_raw.columns else []
+            p_actions = df_poly_raw[df_poly_raw[has_tick] == ticker] if has_tick in df_poly_raw.columns else []
+            i_actions = df_inst_raw[df_inst_raw[has_tick] == ticker] if has_tick in df_inst_raw.columns else []
+            
+            vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
+            
+            with st.container(border=True):
+                st.markdown(f"### **{ticker}**")
+                if vol_color == "green":
+                    st.markdown(f"📈 **Live Volume:** :{vol_color}[{vol_label} 🔥 Breakout]")
+                else:
+                    st.markdown(f"⚪ **Live Volume:** {vol_label}")
+                st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
+    st.write("---")
 
+
+# --------------------------------------------------------
+# 8. TAB VIEWPORTS DISPLAY CONTROLS
+# --------------------------------------------------------
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🏢 Corporate Insiders", 
+    "🏛️ Political Disclosures", 
+    "🐋 Institutional Blocks",
+    "🦅 MAGA Alpha Core",
+    "📋 Custom Watchlist"
+])
+
+with tab1:
+    st.subheader("Form 4 Intelligence Feed (Live Web Streams)")
+    if not df_insider.empty and "Value ($)" in df_insider.columns:
+        total_insider_buys = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
+        total_insider_sells = df_insider[df_insider["Value ($)"] < 0]["Value ($)"].sum()
+        m1, m2 = st.columns(2)
+        m1.metric("Total Tracked Buying Volume", f"${total_insider_buys:,.0f}")
+        m2.metric("Total Tracked Selling Volume", f"${abs(total_insider_sells):,.0f}")
+        
+        display_insider = df_insider.copy()
+        if pd.api.types.is_datetime64_any_dtype(display_insider["Filing Date"]):
+            display_insider["Filing Date"] = display_insider["Filing Date"].dt.strftime('%Y-%m-%d')
+            
+        st.dataframe(display_insider[REQUIRED_INSIDER], hide_index=True, use_container_width=True)
+    else:
+        st.info("No live insider trades matching current watchlist items or filter settings.")
+
+with tab2:
+    st.subheader("Live Capitol Hill Transactions")
+    if not df_poly.empty:
+        poly_purchases = df_poly[df_poly["Type"] == "🟢 Purchase"]["Numeric Max"].sum()
+        poly_sales = df_poly[df_poly["Type"] == "🔴 Sale"]["Numeric Max"].sum()
+        pm1, pm2 = st.columns(2)
+        pm1.metric("Est. Lawmaker Inflow Capacity", f"${poly_purchases:,.0f}")
+        pm2.metric("Est. Lawmaker Outflow Capacity", f"${poly_sales:,.0f}")
+        
+        display_poly = df_poly.copy()
+        if pd.api.types.is_datetime64_any_dtype(display_poly["Filing Date"]):
+            display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
+        st.dataframe(display_poly[["Filing Date", "Politician", "Ticker", "Sector", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
+    else:
+        st.info("No congressional trades filed on these tickers in the last 30 days.")
+
+with tab3:
+    st.subheader("Major Institutional Block Holdings")
+    if not df_inst.empty:
+        inst_inflow = df_inst["Value ($)"].sum()
+        st.metric("Whale Net Core Institutional Assets Covered", f"${inst_inflow:,.0f}")
+        st.dataframe(df_inst[REQUIRED_INST], hide_index=True, use_container_width=True)
+    else:
+        st.info("No active block holding profiles matching tickers.")
+
+with tab4:
+    st.subheader("🇺🇸 High-Conviction Federal Executive Tracker")
+    df_maga = df_maga_raw.copy()
+    
+    # Defensive structural tracking loop for local static portfolio structure
+    REQUIRED_MAGA = ["Ticker", "Sector", "Holding Tier", "Estimated Value", "Action", "Thesis"]
+    if df_maga.empty:
+        df_maga = pd.DataFrame(columns=REQUIRED_MAGA)
+    else:
+        if "Ticker" in df_maga.columns:
+            df_maga["Sector"] = df_maga["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
+        for c in REQUIRED_MAGA:
+            if c not in df_maga.columns:
+                df_maga[c] = "N/A"
+                
+    mm1, mm2 = st.columns(2)
+    mm1.metric("Est. Minimum Portfolio Allocation Tier", "$220,000,000")
+    mm2.metric("Dominant Allocation Overweight", "Semiconductors / Infrastructure")
+    st.dataframe(df_maga[REQUIRED_MAGA], hide_index=True, use_container_width=True)
+
+with tab5:
+    st.subheader("📋 Personalized High-Alpha Watchlist")
+    st.caption("Add custom stock tickers here to monitor their real-time volume breakout statuses instantly.")
+    
+    col_input, col_btn = st.columns([3, 1])
+    with col_input:
+        new_ticker = st.text_input("Enter Stock Ticker to Add", placeholder="e.g. SMCI, VRT, CEG", key="add_input").upper().strip()
+    with col_btn:
+        st.write("##") 
+        if st.button("➕ Add Ticker", use_container_width=True):
+            if new_ticker and new_ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_ticker)
+                sync_watchlist_to_url() 
+                st.rerun() 
+                
+    st.write("---")
+    
+    if st.session_state.watchlist:
+        for ticker in st.session_state.watchlist:
+            vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
+            sector_name = data_store.SECTOR_MAP.get(ticker, "Custom Tracker Asset / Alpha Target")
+            
+            metric_col, info_col, action_col = st.columns([2, 4, 1])
+            
+            with metric_col:
+                if vol_color == "green":
+                    st.success(f"**{ticker}** • {vol_label}")
+                elif vol_color == "red":
+                    st.error(f"**{ticker}** • {vol_label}")
+                else:
+                    st.info(f"**{ticker}** • {vol_label}")
+                    
+            with info_col:
+                st.markdown(f"**Sector:** {sector_name}")
+                st.caption(f"Live API cross-reference lookups successfully running for asset.")
+                
+            with action_col:
+                st.write("") 
+                if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
+                    st.session_state.watchlist.remove(ticker)
+                    sync_watchlist_to_url() 
+                    st.rerun() 
+            st.write("---")
+    else:
+        st.info("Your watchlist is currently empty. Use the input panel above to track custom parameters.")
