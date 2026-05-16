@@ -71,35 +71,8 @@ def get_clean_data():
         
     return ins_f, poly_f, whale_f
 
-    
-    try:
-        r = requests.get("https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv", timeout=3)
-        if r.status_code == 200 and len(r.text) > 100:
-            df_c = pd.read_csv(StringIO(r.text))
-            df_c.columns = [str(c).strip().lower() for c in df_c.columns]
-            t_col = next((c for c in df_c.columns if c in ["ticker", "symbol"]), None)
-            n_col = next((c for c in df_c.columns if c in ["politician", "representative", "name"]), None)
-            v_col = next((c for c in df_c.columns if c in ["amount", "range"]), None)
-            ty_col = next((c for c in df_c.columns if c in ["type", "transaction"]), None)
-            
-            if t_col and n_col:
-                df_c[t_col] = df_c[t_col].astype(str).str.upper().str.strip()
-                df_fil = df_c[df_c[t_col].isin(wl)].copy()
-                if not df_fil.empty:
-                    poly = pd.DataFrame({
-                        "Filing Date": "Live Feed",
-                        "Politician": df_fil[n_col].astype(str).str.title(),
-                        "Chamber": "Congress",
-                        "Ticker": df_fil[t_col],
-                        "Type": df_fil[ty_col].fillna("Purchase").apply(lambda x: "🔴 Sale" if "sel" in str(x).lower() else "🟢 Purchase"),
-                        "Amount Range": df_fil[v_col].fillna("$15k-$50k"),
-                        "Numeric Max": 50000,
-                        "Sector": "Tech / Industrial"
-                    })
-    except:
-        pass
-        
-    return ins[ins["Ticker"].isin(wl)], poly[poly["Ticker"].isin(wl)], whale[whale["Ticker"].isin(wl)]
+
+[poly["Ticker"].isin(wl)], whale[whale["Ticker"].isin(wl)]
 
 df_insider, df_poly, df_whale = get_clean_data()
 
