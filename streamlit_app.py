@@ -28,25 +28,20 @@ TODAY = datetime.now()
 # --------------------------------------------------------
 # 2. PERSISTENT STORAGE: Browser URL Query Parameter Sync
 # --------------------------------------------------------
-# Read current URL parameters to check if there is an active watchlist saved in the link
 query_params = st.query_params
 
 if "watchlist" not in st.session_state:
     if "list" in query_params:
-        # Rebuild list from URL string: "NVDA,VRT,SMCI" -> ["NVDA", "VRT", "SMCI"]
         st.session_state.watchlist = [t.strip().upper() for t in query_params["list"].split(",") if t.strip()]
     else:
-        # Absolute structural baseline defaults if the URL string is pristine
         st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
 def sync_watchlist_to_url():
-    """Updates the browser address bar parameters instantly so edits survive reboots."""
     if st.session_state.watchlist:
         st.query_params["list"] = ",".join(st.session_state.watchlist)
     else:
         st.query_params.clear()
 
-# Make sure the address bar matches the current state immediately on load
 sync_watchlist_to_url()
 
 # --------------------------------------------------------
@@ -155,13 +150,12 @@ df_inst_raw = get_institutional_data()
 df_maga_raw = pd.DataFrame(data_store.get_maga_portfolio_data())
 
 # --------------------------------------------------------
-# 4. Global Watchlist Lock Filter Execution
+# 4. FIXED FILTER VIEWPORTS (Displays Watchlist + Master Streams)
 # --------------------------------------------------------
-if st.session_state.watchlist:
-    df_insider_raw = df_insider_raw[df_insider_raw["Ticker"].isin(st.session_state.watchlist)]
-    df_poly_raw = df_poly_raw[df_poly_raw["Ticker"].isin(st.session_state.watchlist)]
-    df_inst_raw = df_inst_raw[df_inst_raw["Ticker"].isin(st.session_state.watchlist)]
-    df_maga_raw = df_maga_raw[df_maga_raw["Ticker"].isin(st.session_state.watchlist)]
+# If tickers match watchlist, prioritize them. If not, don't break the masters.
+df_insider_filtered = df_insider_raw.copy()
+df_poly_filtered = df_poly_raw.copy()
+df_inst_filtered = df_inst_raw.copy()
 
 # --------------------------------------------------------
 # Sidebar Configuration & Slider Sorting
@@ -173,9 +167,9 @@ min_inst_val = st.sidebar.slider("Minimum Institutional Value ($M)", 0, 600, 20,
 
 tier_mapping = {"All Trades": 0, "$15k+": 15000, "$50k+": 50000, "$100k+": 100000, "$500k+": 500000}
 
-df_insider = df_insider_raw[df_insider_raw["Value ($)"].abs() >= min_insider_val]
-df_poly = df_poly_raw[df_poly_raw["Numeric Max"] >= tier_mapping[min_poly_tier]]
-df_inst = df_inst_raw[df_inst_raw["Value ($)"].abs() >= min_inst_val]
+df_insider = df_insider_filtered[df_insider_filtered["Value ($)"].abs() >= min_insider_val]
+df_poly = df_poly_filtered[df_poly_filtered["Numeric Max"] >= tier_mapping[min_poly_tier]]
+df_inst = df_inst_filtered[df_inst_filtered["Value ($)"].abs() >= min_inst_val]
 
 st.sidebar.write("---")
 st.sidebar.subheader("📊 Combined Capital Hotspots")
@@ -193,12 +187,13 @@ poly_tickers = set(df_poly_raw["Ticker"].unique())
 inst_tickers = set(df_inst_raw["Ticker"].unique())
 maga_tickers = set(df_maga_raw["Ticker"].unique())
 
-triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
+# Look for massive overlaps inside your customized watchlist assets specifically
+targeted_watchlist_intersection = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
 
-if triple_conviction:
+if targeted_watchlist_intersection:
     st.error("⚡ **Asymmetry Alert: Triple Conviction Breakout Matrix**")
-    cols = st.columns(len(triple_conviction))
-    for idx, ticker in enumerate(triple_conviction):
+    cols = st.columns(len(targeted_watchlist_intersection))
+    for idx, ticker in enumerate(targeted_watchlist_intersection):
         with cols[idx]:
             c_actions = df_insider_raw[df_insider_raw["Ticker"] == ticker]
             p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker]
@@ -255,7 +250,7 @@ with tab2:
         display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
         st.dataframe(display_poly[["Filing Date", "Politician", "Ticker", "Sector", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
     else:
-        st.warning("No data matching that filter layout.")
+        st.warning("No filing records found matching parameters.")
 
 with tab3:
     st.subheader("Major Institutional Block Trade Changes")
@@ -287,7 +282,7 @@ with tab5:
         if st.button("➕ Add Ticker", use_container_width=True):
             if new_ticker and new_ticker not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker)
-                sync_watchlist_to_url() # Sync to address bar immediately
+                sync_watchlist_to_url() 
                 st.rerun() 
                 
     st.write("---")
@@ -315,7 +310,7 @@ with tab5:
                 st.write("") 
                 if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
                     st.session_state.watchlist.remove(ticker)
-                    sync_watchlist_to_url() # Sync to address bar immediately
+                    sync_watchlist_to_url() 
                     st.rerun() 
             st.write("---")
     else:
