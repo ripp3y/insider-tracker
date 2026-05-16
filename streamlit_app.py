@@ -11,45 +11,57 @@ st.set_page_config(page_title="Asymmetry", page_icon="👁️‍🗨️", layout
 st.title("👁️‍🗨️ Asymmetry")
 st.caption("Alpha Tracking Dashboard")
 
-# 1. INITIALIZE WATCHLIST WITH GUARANTEED STATE FALLBACKS
+# 1. WATCHLIST SYNCHRONIZATION
 if "watchlist" not in st.session_state:
     qp = st.query_params
     if "list" in qp and qp["list"].strip():
         st.session_state.watchlist = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
     else:
-        # Pinned targets load instantly if query parameters are blank
         st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-# Force sync state array to current application scope
 wl = st.session_state.watchlist
 st.query_params["list"] = ",".join(wl)
 
 
-# 2. DEFENSIVE DATA RETRIEVAL ENGINE
+# 2. BULLETPROOF DATA ENGINE
 @st.cache_data(ttl=300)
 def get_clean_data(current_watchlist):
-    # Pass current_watchlist directly to data_store to populate rows early
+    # Fallback DataFrames initialized upfront to prevent NameError
+    ins_df = pd.DataFrame()
+    poly_df = pd.DataFrame()
+    whale_df = pd.DataFrame()
+    
+    # Extract from local store with variable signature safety
     try:
         ins_df = pd.DataFrame(data_store.get_insider_data_raw(current_watchlist))
-    except TypeError:
-        ins_df = pd.DataFrame(data_store.get_insider_data_raw())
-        
+    except:
+        try:
+            ins_df = pd.DataFrame(data_store.get_insider_data_raw())
+        except:
+            pass
+
     try:
         poly_df = pd.DataFrame(data_store.get_fallback_political_data(current_watchlist))
-    except TypeError:
-        poly_df = pd.DataFrame(data_store.get_fallback_political_data())
-        
+    except:
+        try:
+            poly_df = pd.DataFrame(data_store.get_fallback_political_data())
+        except:
+            pass
+
     try:
         whale_df = pd.DataFrame(data_store.get_institutional_data_raw(current_watchlist))
-    except TypeError:
-        whale_df = pd.DataFrame(data_store.get_institutional_data_raw())
-    
-    # Standardize 'Ticker' across all data sources
+    except:
+        try:
+            whale_df = pd.DataFrame(data_store.get_institutional_data_raw())
+        except:
+            pass
+
+    # Standardize column naming rules safely
     for df in [ins_df, poly_df, whale_df]:
-        if not df.empty and "Ticker" in df.columns:
+        if df is not None and not df.empty and "Ticker" in df.columns:
             df["Ticker"] = df["Ticker"].astype(str).str.upper().str.strip()
 
-    # Attempt dynamic live Congress feed sync
+    # Try dynamic live congress network pull
     try:
         url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
         r = requests.get(url, timeout=3)
@@ -79,53 +91,45 @@ def get_clean_data(current_watchlist):
     except:
         pass
         
-    # Filter final dataframes strictly down to watchlist matches
-    out_ins = ins_df[ins_df["Ticker"].isin(current_watchlist)] if not ins_df.empty else ins_df
-    out_poly = poly_df[poly_df["Ticker"].isin(current_watchlist)] if not poly_df.empty else poly_df
-    out_whale = whale_df[whale_df["Ticker"].isin(current_watchlist)] if not whale_df.empty else whale_df
+    # Strict watchlist filtering output layer
+    out_ins = ins_df[ins_df["Ticker"].isin(current_watchlist)] if (ins_df is not None and not ins_df.empty) else pd.DataFrame()
+    out_poly = poly_df[poly_df["Ticker"].isin(current_watchlist)] if (poly_df is not None and not poly_df.empty) else pd.DataFrame()
+    out_whale = whale_df[whale_df["Ticker"].isin(current_watchlist)] if (whale_df is not None and not whale_df.empty) else pd.DataFrame()
         
     return out_ins, out_poly, out_whale
 
-    except:
-        pass # Gracefully fall back to local store data if network drops
-        
-    # Filter everything down strictly to watchlist matches
-    out_ins = ins_df[ins_df["Ticker"].isin(current_watchlist)] if not ins_df.empty else ins_df
-    out_poly = poly_df[poly_df["Ticker"].isin(current_watchlist)] if not poly_df.empty else poly_df
-    out_whale = whale_df[whale_df["Ticker"].isin(current_watchlist)] if not whale_df.empty else whale_df
-        
-    return out_ins, out_poly, out_whale
-
-# Execute data assembly loop
+# Compile current frames
 df_insider, df_poly, df_whale = get_clean_data(wl)
 
-# 3. CORE FILTERS (SIDEBAR)
+
+# 3. SIDEBAR CONTROLS
 st.sidebar.header("🐋 Core Filters")
 min_insider = st.sidebar.slider("Min Insider Value ($)", 0, 1500000, 0, 50000)
 
-if not df_insider.empty and "Value ($)" in df_insider.columns:
+if df_insider is not None and not df_insider.empty and "Value ($)" in df_insider.columns:
     df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider]
 
-# 4. VIEWPORTS AND TABS
+
+# 4. VIEWPORTS AND TABS SYSTEM
 t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
 with t1:
     st.subheader("Corporate Insiders")
-    if not df_insider.empty:
+    if df_insider is not None and not df_insider.empty:
         st.dataframe(df_insider, hide_index=True, use_container_width=True)
     else:
         st.info("No active insider entries matching watchlist.")
 
 with t2:
     st.subheader("Political Trades")
-    if not df_poly.empty:
+    if df_poly is not None and not df_poly.empty:
         st.dataframe(df_poly, hide_index=True, use_container_width=True)
     else:
         st.info("No political data found for these assets.")
 
 with t3:
     st.subheader("Whale Blocks")
-    if not df_whale.empty:
+    if df_whale is not None and not df_whale.empty:
         st.dataframe(df_whale, hide_index=True, use_container_width=True)
     else:
         st.info("No active block data matching watchlist.")
@@ -140,7 +144,6 @@ with t4:
 with t5:
     st.subheader("Watchlist Manager")
     
-    # Corrected native method: form_submit_button
     with st.form("add_ticker_form", clear_on_submit=True):
         new_tk = st.text_input("Enter Ticker Symbol:").upper().strip()
         submitted = st.form_submit_button("➕ Add to Watchlist")
@@ -156,4 +159,3 @@ with t5:
     if st.button("🗑️ Reset Watchlist"):
         st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
         st.rerun()
-
