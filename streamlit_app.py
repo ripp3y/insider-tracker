@@ -28,25 +28,27 @@ st.session_state.watchlist = current_wl
 wl = st.session_state.watchlist
 
 
-# --- FLAT DATA ENGINE ---
+# --- DYNAMIC DATA ENGINE ---
 @st.cache_data(ttl=300)
-def get_clean_data():
+def get_clean_data(watchlist_symbols):
+    # Pass the active watchlist straight into the data store queries
     try:
+        df_i = pd.DataFrame(data_store.get_insider_data_raw(watchlist_symbols))
+    except TypeError:
+        # Fallback if your data_store function doesn't accept arguments yet
         df_i = pd.DataFrame(data_store.get_insider_data_raw())
-    except:
-        df_i = pd.DataFrame()
 
     try:
+        df_p = pd.DataFrame(data_store.get_fallback_political_data(watchlist_symbols))
+    except TypeError:
         df_p = pd.DataFrame(data_store.get_fallback_political_data())
-    except:
-        df_p = pd.DataFrame()
 
     try:
+        df_w = pd.DataFrame(data_store.get_institutional_data_raw(watchlist_symbols))
+    except TypeError:
         df_w = pd.DataFrame(data_store.get_institutional_data_raw())
-    except:
-        df_w = pd.DataFrame()
 
-    # Standardize string casing rules uniformly 
+    # Standardize string casing rules uniformly across all frames
     if not df_i.empty and "Ticker" in df_i.columns:
         df_i["Ticker"] = df_i["Ticker"].astype(str).str.upper().str.strip()
     if not df_p.empty and "Ticker" in df_p.columns:
@@ -56,7 +58,14 @@ def get_clean_data():
 
     return df_i, df_p, df_w
 
-raw_insider, raw_poly, raw_whale = get_clean_data()
+# Pass the live URL watchlist 'wl' straight into the engine on run
+raw_insider, raw_poly, raw_whale = get_clean_data(wl)
+
+# Final safety filter match
+df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
+df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
+df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
+
 
 # Dataframe slices matching the URL watchlist
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
