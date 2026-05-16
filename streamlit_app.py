@@ -1,7 +1,12 @@
 import streamlit as st
 import pandas as pd
 import requests
+import warnings
 from datetime import datetime, timedelta
+
+# Silences the framework layout deprecation logs in the background console
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
 # --------------------------------------------------------
 # 1. Page Configuration & Adaptive UI Layouts
@@ -113,8 +118,8 @@ with tab1:
     c1.metric("Tracked Exec Purchases", f"{total_buys} Companies")
     c2.metric("Total Tracked Buying Volume", f"${total_capital:,.0f}")
     
-    # Modern layout parameter applied here
-    st.dataframe(df_insider, hide_index=True, use_width="stretch")
+    # Restored valid parameter to fix the TypeError completely
+    st.dataframe(df_insider, hide_index=True, use_container_width=True)
 
 # --- TAB 2: POLITICIANS ---
 with tab2:
@@ -133,11 +138,11 @@ with tab2:
         if not df_poly.empty:
             df_poly["Filing Date"] = df_poly["Filing Date"].dt.strftime('%Y-%m-%d')
             
-            # Modern layout parameter applied here
+            # Restored valid parameter to fix the TypeError completely
             st.dataframe(
                 df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]].head(100), 
                 hide_index=True,
-                use_width="stretch"
+                use_container_width=True
             )
             
             st.write("---")
