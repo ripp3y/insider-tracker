@@ -80,8 +80,12 @@ df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider] if not df_
 df_whale = df_whale[df_whale["Value ($)"].abs() >= min_whale] if not df_whale.empty else df_whale
 
 # Sector Multi-Chart Aggregator
-if not df_insider.empty:
+if # Sector Multi-Chart Aggregator (Guards against missing columns)
+if not df_insider.empty and "Sector" in df_insider.columns:
     st.sidebar.bar_chart(df_insider["Sector"].value_counts())
+else:
+    st.sidebar.caption("No sector distribution available.")
+
 
 # 4. FLAT ALERT GRID (Fixes missing trailing statements)
 try:
