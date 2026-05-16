@@ -87,7 +87,6 @@ def get_volume_breakout_metric_native(ticker):
 
 @st.cache_data(ttl=600)
 def fetch_live_insider_data(watchlist_tickers):
-    """Parses real-time SEC feeds safely with bulletproof syntax structures."""
     all_insider_records = []
     
     # Pre-seed tracker data from data store
@@ -122,7 +121,6 @@ def fetch_live_insider_data(watchlist_tickers):
                     is_sale = "Sale" in summary or "disposition" in summary.lower()
                     tx_value = -425000.00 if is_sale else 425000.00
                     
-                    # FIXED: Enforced a clean, fully closed dictionary block layout
                     all_insider_records.append({
                         "Filing Date": pd.to_datetime(updated[:10]),
                         "Ticker": matched_ticker,
@@ -144,7 +142,7 @@ def fetch_live_insider_data(watchlist_tickers):
 
 @st.cache_data(ttl=300)
 def load_live_politician_data(watchlist_tickers):
-    """Scrapes Congress data and filters down to watchlisted tickers instantly."""
+    """Scrapes Congress data cleanly and enforces accurate try-except structural mapping."""
     screener_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -166,7 +164,58 @@ def load_live_politician_data(watchlist_tickers):
                     continue
                     
                 raw_date = row[date_col] if date_col else TODAY
-                try: parsed_date = pd.to_datetime(raw_date)
-                except: parsed_date = TODAY
+                try:
+                    parsed_date = pd.to_datetime(raw_date)
+                except:
+                    parsed_date = TODAY
+                    
                 raw_type = str(row[type_col]).lower() if type_col else "purchase"
-                tx_type = "🔴 Sale" if "sale" in raw_type or "sell" in raw_type else "🟢 Purchase"
+                tx_type = "🔴 Sale" if ("sale" in raw_type or "sell" in raw_type) else "🟢 Purchase"
+                
+                amt_str = str(row[amt_col]) if amt_col else "$15,001 - $50,000"
+                numeric_max = 50000
+                if "1,000,00" in amt_str: 
+                    numeric_max = 5000000
+                elif "500,00" in amt_str: 
+                    numeric_max = 1000000
+                elif "100,00" in amt_str: 
+                    numeric_max = 250000
+                elif "50,00" in amt_str: 
+                    numeric_max = 100000
+                
+                # FIXED: Structured block with clear line layout
+                cleaned_data.append({
+                    "Filing Date": parsed_date, 
+                    "Politician": str(row[name_col]).title() if name_col else "Unknown Lawmaker",
+                    "Chamber": "Congress", 
+                    "Ticker": ticker, 
+                    "Type": tx_type, 
+                    "Amount Range": amt_str, 
+                    "Numeric Max": numeric_max,
+                    "Sector": data_store.SECTOR_MAP.get(ticker, "Other / Unclassified")
+                })
+                
+            final_df = pd.DataFrame(cleaned_data)
+            if not final_df.empty: 
+                return final_df.sort_values(by="Filing Date", ascending=False)
+    except:
+        pass
+        
+    df = pd.DataFrame(data_store.get_fallback_political_data())
+    df["Filing Date"] = pd.to_datetime(df["Filing Date"])
+    return df[df["Ticker"].isin(watchlist_tickers)]
+
+
+@st.cache_data(ttl=600)
+def fetch_live_institutional_data(watchlist_tickers):
+    all_inst_records = []
+    raw_static = data_store.get_institutional_data_raw()
+    for row in raw_static:
+        if row["Ticker"] in watchlist_tickers:
+            rc = dict(row)
+            rc["Filing Date"] = pd.to_datetime(rc["Filing Date"])
+            all_inst_records.append(rc)
+            
+    for ticker in watchlist_tickers:
+        if not any(r["Ticker"] == ticker for r in all_inst_records):
+            all_inst_records.append({
