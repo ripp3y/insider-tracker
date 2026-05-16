@@ -25,15 +25,26 @@ wl = st.session_state.watchlist
 st.query_params["list"] = ",".join(wl)
 
 
-# 2. DEFINENSIVE DATA RETRIEVAL ENGINE
+# 2. DEFENSIVE DATA RETRIEVAL ENGINE
 @st.cache_data(ttl=300)
 def get_clean_data(current_watchlist):
-    # Always declare baselines first to prevent NameErrors
-    ins_df = pd.DataFrame(data_store.get_insider_data_raw())
-    poly_df = pd.DataFrame(data_store.get_fallback_political_data())
-    whale_df = pd.DataFrame(data_store.get_institutional_data_raw())
+    # Pass current_watchlist directly to data_store to populate rows early
+    try:
+        ins_df = pd.DataFrame(data_store.get_insider_data_raw(current_watchlist))
+    except TypeError:
+        ins_df = pd.DataFrame(data_store.get_insider_data_raw())
+        
+    try:
+        poly_df = pd.DataFrame(data_store.get_fallback_political_data(current_watchlist))
+    except TypeError:
+        poly_df = pd.DataFrame(data_store.get_fallback_political_data())
+        
+    try:
+        whale_df = pd.DataFrame(data_store.get_institutional_data_raw(current_watchlist))
+    except TypeError:
+        whale_df = pd.DataFrame(data_store.get_institutional_data_raw())
     
-    # Standardize 'Ticker' across all static sources
+    # Standardize 'Ticker' across all data sources
     for df in [ins_df, poly_df, whale_df]:
         if not df.empty and "Ticker" in df.columns:
             df["Ticker"] = df["Ticker"].astype(str).str.upper().str.strip()
@@ -65,6 +76,16 @@ def get_clean_data(current_watchlist):
                         "Numeric Max": 50000,
                         "Sector": "Infrastructure / Tech"
                     })
+    except:
+        pass
+        
+    # Filter final dataframes strictly down to watchlist matches
+    out_ins = ins_df[ins_df["Ticker"].isin(current_watchlist)] if not ins_df.empty else ins_df
+    out_poly = poly_df[poly_df["Ticker"].isin(current_watchlist)] if not poly_df.empty else poly_df
+    out_whale = whale_df[whale_df["Ticker"].isin(current_watchlist)] if not whale_df.empty else whale_df
+        
+    return out_ins, out_poly, out_whale
+
     except:
         pass # Gracefully fall back to local store data if network drops
         
