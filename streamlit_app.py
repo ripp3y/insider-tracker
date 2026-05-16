@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
-import requests
 import warnings
-import json
-import streamlit.components.v1 as components
 import data_store
 
 warnings.filterwarnings("ignore")
@@ -14,63 +11,24 @@ st.caption("Alpha Tracking Dashboard")
 
 DEFAULT_TICKERS = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-# --- BROWSER LOCAL STORAGE ENGINE ---
-# Hidden HTML/JS bridge to pass data straight to your device's browser memory
-st.markdown('<div id="local-storage-patch" style="display:none;"></div>', unsafe_allow_html=True)
+# --- URL-BASED PERMANENT STORAGE ---
+# Read directly from the browser URL parameter string on launch
+qp = st.query_params
 
-storage_bridge = components.html(
-    """
-    <script>
-    // Communicate local storage back to Streamlit's state frames
-    const sendToStreamlit = (data) => {
-        window.parent.postMessage({
-            isStreamlitMessage: true,
-            type: "streamlit:setComponentValue",
-            value: data
-        }, "*");
-    };
+if "list" in qp and qp["list"].strip():
+    # If tickers exist in the URL, pull them instantly
+    current_wl = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
+else:
+    # Otherwise, fall back to default assets
+    current_wl = DEFAULT_TICKERS.copy()
+    st.query_params["list"] = ",".join(current_wl)
 
-    // Listen for storage read requests from Python
-    window.addEventListener("message", (event) => {
-        if (event.data.type === "read") {
-            const saved = localStorage.getItem("asymmetry_watchlist");
-            sendToStreamlit(saved ? JSON.parse(saved) : null);
-        }
-        if (event.data.type === "write") {
-            localStorage.setItem("asymmetry_watchlist", JSON.stringify(event.data.watchlist));
-        }
-    });
-    
-    // Initial auto-read on load
-    setTimeout(() => {
-        const saved = localStorage.getItem("asymmetry_watchlist");
-        if (saved) sendToStreamlit(JSON.parse(saved));
-    }, 300);
-    </script>
-    """,
-    height=0,
-)
-
-# Manage watchlist arrays via Session State fallback chains
-if "watchlist" not in st.session_state:
-    st.session_state.watchlist = DEFAULT_TICKERS.copy()
-    st.session_state.storage_synced = False
-
-# Capture incoming list tokens from the JavaScript frame
-if storage_bridge is not None and not st.session_state.storage_synced:
-    try:
-        browser_saved = storage_bridge
-        if isinstance(browser_saved, list) and len(browser_saved) > 0:
-            st.session_state.watchlist = browser_saved
-            st.session_state.storage_synced = True
-            st.rerun()
-    except:
-        pass
-
+# Sync to session state
+st.session_state.watchlist = current_wl
 wl = st.session_state.watchlist
 
 
-# --- DATA ENGINE ---
+# --- FLAT DATA ENGINE ---
 @st.cache_data(ttl=300)
 def get_clean_data():
     try:
@@ -100,7 +58,7 @@ def get_clean_data():
 
 raw_insider, raw_poly, raw_whale = get_clean_data()
 
-# Dataframe slices
+# Dataframe slices matching the URL watchlist
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
@@ -155,8 +113,8 @@ with t5:
     if submitted and new_tk:
         if new_tk not in st.session_state.watchlist:
             st.session_state.watchlist.append(new_tk)
-            # Update the browser's local memory instantly
-            components.html(f"""<script>localStorage.setItem("asymmetry_watchlist", '{json.dumps(st.session_state.watchlist)}');</script>""", height=0)
+            # Instantly bake the new list right into the browser URL bar
+            st.query_params["list"] = ",".join(st.session_state.watchlist)
             st.rerun()
             
     st.write("### Currently Tracking:")
@@ -164,5 +122,5 @@ with t5:
     
     if st.button("🗑️ Reset Watchlist"):
         st.session_state.watchlist = DEFAULT_TICKERS.copy()
-        components.html(f"""<script>localStorage.setItem("asymmetry_watchlist", '{json.dumps(st.session_state.watchlist)}');</script>""", height=0)
+        st.query_params["list"] = ",".join(st.session_state.watchlist)
         st.rerun()
