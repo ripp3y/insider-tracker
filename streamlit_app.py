@@ -152,14 +152,37 @@ if triple_conviction:
 # --------------------------------------------------------
 # 5. Tab Viewports
 # --------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures", "🐋 Institutional Blocks"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🏢 Corporate Insiders", 
+    "🏛️ Political Disclosures", 
+    "🐋 Institutional Blocks",
+    "🦅 MAGA Alpha Core"
+])
 
 with tab1:
     st.subheader("Form 4 Intelligence Feed")
+    
+    # Aggregate Dollar Volume Calculations
+    total_insider_buys = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
+    total_insider_sells = df_insider[df_insider["Value ($)"] < 0]["Value ($)"].sum()
+    
+    m1, m2 = st.columns(2)
+    m1.metric("Total Tracked Buying Volume", f"${total_insider_buys:,.0f}")
+    m2.metric("Total Tracked Selling Volume", f"${abs(total_insider_sells):,.0f}")
+    
     st.dataframe(df_insider[["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]], hide_index=True, use_container_width=True)
 
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
+    
+    # Estimated Maximum Commitment Volume
+    poly_purchases = df_poly[df_poly["Type"] == "🟢 Purchase"]["Numeric Max"].sum()
+    poly_sales = df_poly[df_poly["Type"] == "🔴 Sale"]["Numeric Max"].sum()
+    
+    pm1, pm2 = st.columns(2)
+    pm1.metric("Est. Lawmaker Inflow Capacity", f"${poly_purchases:,.0f}")
+    pm2.metric("Est. Lawmaker Outflow Capacity", f"${poly_sales:,.0f}")
+    
     ticker_search = st.text_input("🔍 Filter Disclosures by Stock Ticker", "").upper().strip()
     if ticker_search:
         df_poly = df_poly[df_poly["Ticker"] == ticker_search]
@@ -173,4 +196,29 @@ with tab2:
 
 with tab3:
     st.subheader("Major Institutional Block Trade Changes")
+    
+    # Institutional Aggregates
+    inst_inflow = df_inst[df_inst["Value ($)"] > 0]["Value ($)"].sum()
+    inst_outflow = df_inst[df_inst["Value ($)"] < 0]["Value ($)"].sum()
+    
+    im1, im2 = st.columns(2)
+    im1.metric("Whale Net Accumulation Blocks", f"${inst_inflow:,.0f}")
+    im2.metric("Whale Net Distribution Blocks", f"${abs(inst_outflow):,.0f}")
+    
     st.dataframe(df_inst[["Filing Date", "Ticker", "Sector", "Institution", "Type", "Shares Changed", "Value ($)"]], hide_index=True, use_container_width=True)
+
+with tab4:
+    st.subheader("🇺🇸 High-Conviction Federal Executive Tracker")
+    st.caption("Aggregated tracking of core positions, recent rotation trends, and structural policy alignment plays.")
+    
+    # Load dynamic MAGA structural portfolio
+    df_maga = pd.DataFrame(data_store.get_maga_portfolio_data())
+    df_maga["Sector"] = df_maga["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
+    
+    # Strategic High-Conviction Visual Indicators
+    mm1, mm2 = st.columns(2)
+    mm1.metric("Est. Minimum Portfolio Allocation Tier", "$220,000,000")
+    mm2.metric("Dominant Allocation Overweight", "Semiconductors / Infrastructure")
+    
+    st.write("---")
+    st.dataframe(df_maga[["Ticker", "Sector", "Holding Tier", "Estimated Value", "Action", "Thesis"]], hide_index=True, use_container_width=True)
