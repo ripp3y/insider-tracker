@@ -4,7 +4,7 @@ import requests
 from datetime import datetime, timedelta
 
 # --------------------------------------------------------
-# 1. Page Configuration & Modern Structural UI
+# 1. Page Configuration & Adaptive UI
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -12,7 +12,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Dark theme structural table framing adjustments
 st.html(
     """
     <style>
@@ -29,7 +28,6 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 
 TODAY = datetime.now()
 
-# Helper utility to cleanly summarize massive range disclosures for mobile viewports
 def compact_amount(amount_str):
     if not amount_str or pd.isna(amount_str):
         return "Unknown"
@@ -50,12 +48,11 @@ def compact_amount(amount_str):
     return amount_str
 
 # --------------------------------------------------------
-# 2. High-Availability Congress Disclosures Engine
+# 2. High-Availability Data Engines
 # --------------------------------------------------------
-@st.cache_data(ttl=600)  # Caches for 10 minutes to maintain snappy interface reloads
+@st.cache_data(ttl=600)  
 def load_live_politician_data():
     try:
-        # High-availability, public JSON stream mirror covering recent multi-chamber data
         url = "https://api.quiverquant.com/beta/live/congresstrades"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=10)
@@ -64,13 +61,11 @@ def load_live_politician_data():
             raw_data = response.json()
             df = pd.DataFrame(raw_data)
             
-            # Map API data properties over to UI layout structure
             df["Filing Date"] = pd.to_datetime(df["date"], errors='coerce')
             df["Politician"] = df["representative"].fillna(df.get("senator", "Unknown Lawmaker"))
             df["Chamber"] = df["house_senate"].fillna("Senate").replace({"H": "House", "S": "Senate"})
             df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
             
-            # Label action designations with clean tracking icons
             df["Type"] = df["transaction"].fillna("").astype(str).str.lower()
             df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
             
@@ -83,7 +78,6 @@ def load_live_politician_data():
             raise Exception("Mirror node structural timeout")
             
     except Exception as e:
-        # Dynamic fallback matching schema perfectly to keep dashboard running smoothly
         fallback_data = [
             {"Filing Date": TODAY - timedelta(days=0), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15K - $50K"},
             {"Filing Date": TODAY - timedelta(days=3), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1M - $5M"},
@@ -108,7 +102,7 @@ def get_insider_data():
     return pd.DataFrame(data)
 
 # --------------------------------------------------------
-# 3. Interactive Multi-Tab Interface
+# 3. Dynamic Multi-Tab Layout
 # --------------------------------------------------------
 tab1, tab2 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures"])
 
@@ -122,8 +116,8 @@ with tab1:
     if filter_buys:
         df_insider = df_insider[df_insider["Type"] == "Buy"]
         
-    # Updated container keyword usage to fix breaking logs
-    st.dataframe(df_insider, use_width="stretch", hide_index=True)
+    # Bulletproof syntax: standard layout config dictionary
+    st.dataframe(df_insider, hide_index=True)
 
 # --- TAB 2: POLITICIANS ---
 with tab2:
@@ -162,9 +156,8 @@ with tab2:
     if not df_poly_final.empty:
         df_poly_final["Filing Date"] = df_poly_final["Filing Date"].dt.strftime('%Y-%m-%d')
     
-    # Swapped syntax over to use_width='stretch' to pass log runtime checks cleanly
+    # Bulletproof layout handling across all frames
     st.dataframe(
         df_poly_final[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]],
-        use_width="stretch",
         hide_index=True
     )
