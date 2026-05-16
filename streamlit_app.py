@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 st.title("👁️‍🗨️ Asymmetry")
-st.caption("Tracking legal alpha by monitoring corporate executives and political disclosures.")
+st.caption("Tracking legal alpha by monitoring corporate executives, political disclosures, and institutional whale capital.")
 
 TODAY = datetime.now()
 
@@ -33,6 +33,7 @@ SECTOR_MAP = {
     "BE": "Clean Energy / Utilities",
     "ALB": "Specialty Chemicals / Mining",
     "STX": "Data Storage / Hardware",
+    "SNDK": "Data Storage / Hardware",
     "MSFT": "Enterprise Software / Cloud",
     "TXN": "Semiconductors / AI",
     "LRN": "EdTech / Services"
@@ -130,68 +131,65 @@ def get_insider_data():
     df["Sector"] = df["Ticker"].map(lambda x: SECTOR_MAP.get(x, "Other / Unclassified"))
     return df
 
+def get_institutional_data():
+    # Tracks substantial block fund inflows/outflows
+    data = [
+        {"Filing Date": (TODAY - timedelta(days=1)).strftime('%Y-%m-%d'), "Ticker": "STX", "Institution": "BlackRock Inc.", "Type": "🟢 Position Increase", "Shares Changed": 1250000, "Value ($)": 85000000},
+        {"Filing Date": (TODAY - timedelta(days=2)).strftime('%Y-%m-%d'), "Ticker": "NVDA", "Institution": "Vanguard Group", "Type": "🟢 Position Increase", "Shares Changed": 4300000, "Value ($)": 512000000},
+        {"Filing Date": (TODAY - timedelta(days=3)).strftime('%Y-%m-%d'), "Ticker": "FIX", "Institution": "Fidelity Management", "Type": "🟢 Position Increase", "Shares Changed": 180000, "Value ($)": 62000000},
+        {"Filing Date": (TODAY - timedelta(days=5)).strftime('%Y-%m-%d'), "Ticker": "MRVL", "Institution": "Renaissance Technologies", "Type": "🟢 Position Increase", "Shares Changed": 850000, "Value ($)": 55000000},
+        {"Filing Date": (TODAY - timedelta(days=6)).strftime('%Y-%m-%d'), "Ticker": "ALB", "Institution": "Citadel Advisors", "Type": "🟢 Position Increase", "Shares Changed": 340000, "Value ($)": 41000000},
+        {"Filing Date": (TODAY - timedelta(days=9)).strftime('%Y-%m-%d'), "Ticker": "LITE", "Institution": "Point72 Asset Mgmt", "Type": "🔴 Position Decrease", "Shares Changed": -410000, "Value ($)": -22000000}
+    ]
+    df = pd.DataFrame(data)
+    df["Sector"] = df["Ticker"].map(lambda x: SECTOR_MAP.get(x, "Other / Unclassified"))
+    return df
+
 df_insider_raw = get_insider_data()
 df_poly_raw = load_live_politician_data()
+df_inst_raw = get_institutional_data()
 
 # --------------------------------------------------------
-# 3. Sidebar Filters & Real-Time Sector Diagnostics
+# 3. Sidebar Filters & Universal Sector Analytics
 # --------------------------------------------------------
 st.sidebar.header("🐋 Whale Order Filters")
 min_insider_val = st.sidebar.slider("Minimum Insider Value ($)", 0, 1500000, 0, 50000)
 min_poly_tier = st.sidebar.select_slider("Minimum Politician Tier", options=["All Trades", "$15k+", "$50k+", "$100k+", "$500k+"])
+min_inst_val = st.sidebar.slider("Minimum Institutional Value ($M)", 0, 600, 20, 10) * 1000000
 
 tier_mapping = {"All Trades": 0, "$15k+": 15000, "$50k+": 50000, "$100k+": 100000, "$500k+": 500000}
+
 df_insider = df_insider_raw[df_insider_raw["Value ($)"].abs() >= min_insider_val]
 df_poly = df_poly_raw[df_poly_raw["Numeric Max"] >= tier_mapping[min_poly_tier]]
+df_inst = df_inst_raw[df_inst_raw["Value ($)"].abs() >= min_inst_val]
 
 st.sidebar.write("---")
-st.sidebar.subheader("📊 Capital Hotspots by Sector")
-
-# Combine datasets for universal sector counting
-combined_sectors = pd.concat([df_insider["Sector"], df_poly["Sector"]]).value_counts()
+st.sidebar.subheader("📊 Combined Capital Hotspots")
+# Multi-source breakdown including institutional blocks
+combined_sectors = pd.concat([df_insider["Sector"], df_poly["Sector"], df_inst["Sector"]]).value_counts()
 if not combined_sectors.empty:
     st.sidebar.bar_chart(combined_sectors)
 else:
-    st.sidebar.caption("No data matches current slider parameters.")
+    st.sidebar.caption("No data matches parameters.")
 
 # --------------------------------------------------------
-# 4. Asymmetry Cross-Reference Engine
+# 4. Asymmetry Triple-Cross Reference Engine
 # --------------------------------------------------------
 insider_tickers = set(df_insider_raw["Ticker"].unique())
 poly_tickers = set(df_poly_raw["Ticker"].unique())
-converged_tickers = insider_tickers.intersection(poly_tickers)
+inst_tickers = set(df_inst_raw["Ticker"].unique())
 
-if converged_tickers:
-    st.error(f"🔥 **Asymmetry Cross-Reference Alert:** Double Conviction Detected")
-    cols = st.columns(len(converged_tickers))
-    for idx, ticker in enumerate(converged_tickers):
+# Identify where all 3 distinct camps match on a target ticker
+triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
+
+if triple_conviction:
+    st.error(f"⚡ **Asymmetry Alert: Triple Conviction Matrix Activated**")
+    cols = st.columns(len(triple_conviction))
+    for idx, ticker in enumerate(triple_conviction):
         with cols[idx]:
             c_actions = df_insider_raw[df_insider_raw["Ticker"] == ticker]
             p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker]
+            i_actions = df_inst_raw[df_inst_raw["Ticker"] == ticker]
             with st.container(border=True):
                 st.markdown(f"### **{ticker}**")
-                st.caption(SECTOR_MAP.get(ticker, "General"))
-                st.markdown(f"**Corporate:** {len(c_actions)} Active | **Capitol Hill:** {len(p_actions)} Active")
-    st.write("---")
-
-# --------------------------------------------------------
-# 5. UI Layout Tabs
-# --------------------------------------------------------
-tab1, tab2 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures"])
-
-with tab1:
-    st.subheader("Form 4 Intelligence Feed")
-    st.dataframe(df_insider[["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]], hide_index=True, use_container_width=True)
-
-with tab2:
-    st.subheader("Live Capitol Hill Transactions")
-    ticker_search = st.text_input("🔍 Filter Layout by Stock Ticker", "").upper().strip()
-    if ticker_search:
-        df_poly = df_poly[df_poly["Ticker"] == ticker_search]
-    
-    if not df_poly.empty:
-        display_poly = df_poly.copy()
-        display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
-        st.dataframe(display_poly[["Filing Date", "Politician", "Ticker", "Sector", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
-    else:
-        st.warning("No data found matching that filter.")
+                st.caption(
