@@ -3,13 +3,16 @@ import pandas as pd
 import requests
 import warnings
 from io import StringIO
-from datetime import datetime, timedelta
+from datetime import datetime
+
+# Import clean structural data arrays
+import data_store
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
 # --------------------------------------------------------
-# 1. Page Configuration & Setup
+# 1. Page Configuration
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -22,25 +25,8 @@ st.caption("Tracking legal alpha by monitoring corporate executives, political d
 
 TODAY = datetime.now()
 
-# Master Sector Mapping Database
-SECTOR_MAP = {
-    "NVDA": "Semiconductors / AI",
-    "MRVL": "Semiconductors / AI",
-    "UMC": "Semiconductors / AI",
-    "LITE": "Optical Tech / Telecom",
-    "FIX": "Industrial Infrastructure",
-    "POWL": "Industrial Infrastructure",
-    "BE": "Clean Energy / Utilities",
-    "ALB": "Specialty Chemicals / Mining",
-    "STX": "Data Storage / Hardware",
-    "SNDK": "Data Storage / Hardware",
-    "MSFT": "Enterprise Software / Cloud",
-    "TXN": "Semiconductors / AI",
-    "LRN": "EdTech / Services"
-}
-
 # --------------------------------------------------------
-# 2. Hybrid Data Pipeline
+# 2. Hybrid Streamlit Data Pipeline
 # --------------------------------------------------------
 @st.cache_data(ttl=300)
 def load_live_politician_data():
@@ -87,42 +73,104 @@ def load_live_politician_data():
                     "Type": tx_type,
                     "Amount Range": amt_str if amt_col else "Unknown",
                     "Numeric Max": numeric_max,
-                    "Sector": SECTOR_MAP.get(ticker, "Other / Unclassified")
+                    "Sector": data_store.SECTOR_MAP.get(ticker, "Other / Unclassified")
                 })
                 
             final_df = pd.DataFrame(cleaned_data)
             if not final_df.empty:
                 return final_df.sort_values(by="Filing Date", ascending=False)
                 
-        return get_fallback_political_data()
+        return get_fallback_df()
     except:
-        return get_fallback_political_data()
+        return get_fallback_df()
 
-def get_fallback_political_data():
-    data = [
-        {"Filing Date": TODAY - timedelta(days=0), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,000,001 - $5,000,000", "Numeric Max": 5000000},
-        {"Filing Date": TODAY - timedelta(days=1), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
-        {"Filing Date": TODAY - timedelta(days=2), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "TXN", "Type": "🟢 Purchase", "Amount Range": "$100,001 - $250,000", "Numeric Max": 250000},
-        {"Filing Date": TODAY - timedelta(days=2), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "POWL", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
-        {"Filing Date": TODAY - timedelta(days=3), "Politician": "Sheldon Whitehouse", "Chamber": "Senate", "Ticker": "MSFT", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
-        {"Filing Date": TODAY - timedelta(days=4), "Politician": "Michael Guest", "Chamber": "House", "Ticker": "FIX", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000", "Numeric Max": 15000},
-        {"Filing Date": TODAY - timedelta(days=5), "Politician": "John Curtis", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
-        {"Filing Date": TODAY - timedelta(days=6), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "BE", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
-        {"Filing Date": TODAY - timedelta(days=8), "Politician": "Ro Khanna", "Chamber": "House", "Ticker": "MRVL", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
-        {"Filing Date": TODAY - timedelta(days=11), "Politician": "Thomas Carper", "Chamber": "Senate", "Ticker": "ALB", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000", "Numeric Max": 15000},
-        {"Filing Date": TODAY - timedelta(days=12), "Politician": "Dan Meuser", "Chamber": "House", "Ticker": "LITE", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000}
-    ]
-    df = pd.DataFrame(data)
+def get_fallback_df():
+    df = pd.DataFrame(data_store.get_fallback_political_data())
     df["Filing Date"] = pd.to_datetime(df["Filing Date"])
-    df["Sector"] = df["Ticker"].map(lambda x: SECTOR_MAP.get(x, "Other / Unclassified"))
+    df["Sector"] = df["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
     return df
 
 def get_insider_data():
-    data = [
-        {"Ticker": "LITE", "Company": "Lumentum Holdings", "Insider": "Alan Lowe", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 250000, "Filing Date": (TODAY - timedelta(days=1)).strftime('%Y-%m-%d')},
-        {"Ticker": "FIX", "Company": "Comfort Systems USA", "Insider": "Brian Lane", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 1100000, "Filing Date": (TODAY - timedelta(days=3)).strftime('%Y-%m-%d')},
-        {"Ticker": "MRVL", "Company": "Marvell Technology", "Insider": "Matt Murphy", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 450000, "Filing Date": (TODAY - timedelta(days=4)).strftime('%Y-%m-%d')},
-        {"Ticker": "BE", "Company": "Bloom Energy", "Insider": "KR Sridhar", "Role": "CEO", "Type": "🔴 Sell (10b5-1)", "Value ($)": -120000, "Filing Date": (TODAY - timedelta(days=5)).strftime('%Y-%m-%d')},
-        {"Ticker": "NVDA", "Company": "NVIDIA Corp", "Insider": "Colette Kress", "Role": "CFO", "Type": "🔴 Sell", "Value ($)": -2300000, "Filing Date": (TODAY - timedelta(days=7)).strftime('%Y-%m-%d')},
-        {"Ticker": "POWL", "Company": "Powell Industries", "Insider": "Brett Cope", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 320000, "Filing Date": (TODAY - timedelta(days=10)).strftime('%Y-%m-%d')},
-        {"Ticker": "ALB", "Company": "Albemarle Corp", "Insider": "Kent Masters", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 500000, "Filing Date": (TODAY - timedelta(days=12)).strftime('%Y-%m-%d')}
+    df = pd.DataFrame(data_store.get_insider_data_raw())
+    df["Sector"] = df["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
+    return df
+
+def get_institutional_data():
+    df = pd.DataFrame(data_store.get_institutional_data_raw())
+    df["Sector"] = df["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
+    return df
+
+df_insider_raw = get_insider_data()
+df_poly_raw = load_live_politician_data()
+df_inst_raw = get_institutional_data()
+
+# --------------------------------------------------------
+# 3. Sidebar Configuration & Aggregations
+# --------------------------------------------------------
+st.sidebar.header("🐋 Whale Order Filters")
+min_insider_val = st.sidebar.slider("Minimum Insider Value ($)", 0, 1500000, 0, 50000)
+min_poly_tier = st.sidebar.select_slider("Minimum Politician Tier", options=["All Trades", "$15k+", "$50k+", "$100k+", "$500k+"])
+min_inst_val = st.sidebar.slider("Minimum Institutional Value ($M)", 0, 600, 20, 10) * 1000000
+
+tier_mapping = {"All Trades": 0, "$15k+": 15000, "$50k+": 50000, "$100k+": 100000, "$500k+": 500000}
+
+df_insider = df_insider_raw[df_insider_raw["Value ($)"].abs() >= min_insider_val]
+df_poly = df_poly_raw[df_poly_raw["Numeric Max"] >= tier_mapping[min_poly_tier]]
+df_inst = df_inst_raw[df_inst_raw["Value ($)"].abs() >= min_inst_val]
+
+st.sidebar.write("---")
+st.sidebar.subheader("📊 Combined Capital Hotspots")
+combined_sectors = pd.concat([df_insider["Sector"], df_poly["Sector"], df_inst["Sector"]]).value_counts()
+if not combined_sectors.empty:
+    st.sidebar.bar_chart(combined_sectors)
+else:
+    st.sidebar.caption("No data matches parameters.")
+
+# --------------------------------------------------------
+# 4. Asymmetry Triple-Cross Reference Engine
+# --------------------------------------------------------
+insider_tickers = set(df_insider_raw["Ticker"].unique())
+poly_tickers = set(df_poly_raw["Ticker"].unique())
+inst_tickers = set(df_inst_raw["Ticker"].unique())
+
+triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
+
+if triple_conviction:
+    st.error("⚡ **Asymmetry Alert: Triple Conviction Matrix Activated**")
+    cols = st.columns(len(triple_conviction))
+    for idx, ticker in enumerate(triple_conviction):
+        with cols[idx]:
+            c_actions = df_insider_raw[df_insider_raw["Ticker"] == ticker]
+            p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker]
+            i_actions = df_inst_raw[df_inst_raw["Ticker"] == ticker]
+            with st.container(border=True):
+                st.markdown(f"### **{ticker}**")
+                st.caption(data_store.SECTOR_MAP.get(ticker, "General"))
+                st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
+    st.write("---")
+
+# --------------------------------------------------------
+# 5. Tab Viewports
+# --------------------------------------------------------
+tab1, tab2, tab3 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures", "🐋 Institutional Blocks"])
+
+with tab1:
+    st.subheader("Form 4 Intelligence Feed")
+    st.dataframe(df_insider[["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]], hide_index=True, use_container_width=True)
+
+with tab2:
+    st.subheader("Live Capitol Hill Transactions")
+    ticker_search = st.text_input("🔍 Filter Disclosures by Stock Ticker", "").upper().strip()
+    if ticker_search:
+        df_poly = df_poly[df_poly["Ticker"] == ticker_search]
+    
+    if not df_poly.empty:
+        display_poly = df_poly.copy()
+        display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
+        st.dataframe(display_poly[["Filing Date", "Politician", "Ticker", "Sector", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
+    else:
+        st.warning("No data matching that filter layout.")
+
+with tab3:
+    st.subheader("Major Institutional Block Trade Changes")
+    st.dataframe(df_inst[["Filing Date", "Ticker", "Sector", "Institution", "Type", "Shares Changed", "Value ($)"]], hide_index=True, use_container_width=True)
