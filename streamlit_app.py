@@ -11,17 +11,19 @@ st.set_page_config(page_title="Asymmetry", page_icon="👁️‍🗨️", layout
 st.title("👁️‍🗨️ Asymmetry")
 st.caption("Alpha Tracking Dashboard")
 
-# 1. INITIALIZE WATCHLIST FROM QUERY PARAMETERS
+# 1. INITIALIZE WATCHLIST WITH GUARANTEED STATE FALLBACKS
 if "watchlist" not in st.session_state:
     qp = st.query_params
-    if "list" in qp:
+    if "list" in qp and qp["list"].strip():
         st.session_state.watchlist = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
     else:
+        # Pinned targets load instantly if query parameters are blank
         st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-# Keep query params pinned to current state
-st.query_params["list"] = ",".join(st.session_state.watchlist)
+# Force sync state array to current application scope
 wl = st.session_state.watchlist
+st.query_params["list"] = ",".join(wl)
+
 
 # 2. DEFINENSIVE DATA RETRIEVAL ENGINE
 @st.cache_data(ttl=300)
