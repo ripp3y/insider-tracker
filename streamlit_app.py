@@ -2,9 +2,20 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
-import yfinance as yf
+import sys
+import subprocess
 from io import StringIO
 from datetime import datetime
+
+# --------------------------------------------------------
+# Zero-Failure Dependency Auto-Installer
+# --------------------------------------------------------
+try:
+    import yfinance as yf
+except ImportError:
+    # If the Streamlit environment missed the requirements file, force it here
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "yfinance"])
+    import yfinance as yf
 
 # Import clean structural data arrays
 import data_store
@@ -35,8 +46,7 @@ def get_volume_breakout_metric(ticker):
     Compares today's live volume against the 20-day average volume.
     Returns formatted string, percentage float, and a color flag.
     """
-    # Quick guard for ETFs or unique tickers that might mismatch
-    if ticker in ["ANFGF"]: 
+    if ticker in ["ANFGF", "COPX"]: 
         return "N/A Volume", 0.0, "gray"
         
     try:
@@ -47,7 +57,7 @@ def get_volume_breakout_metric(ticker):
         if hist.empty or len(hist) < 20:
             return "No Volume Data", 0.0, "gray"
             
-        # Calculate 20-day average volume (excluding the most recent/live day)
+        # Calculate 20-day average volume (excluding the most recent day)
         avg_volume_20d = hist["Volume"].iloc[-21:-1].mean()
         # Get current day live volume
         live_volume = hist["Volume"].iloc[-1]
@@ -59,7 +69,6 @@ def get_volume_breakout_metric(ticker):
         pct_of_avg = (live_volume / avg_volume_20d) * 100
         
         # Color state based on breakout performance
-        # If it's trading above 100% of its normal monthly average, it's breaking out
         color = "green" if pct_of_avg >= 100 else "red"
         
         return f"{pct_of_avg:.1f}% of 20D Avg", pct_of_avg, color
@@ -188,7 +197,6 @@ if triple_conviction:
             p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker]
             i_actions = df_inst_raw[df_inst_raw["Ticker"] == ticker]
             
-            # Check for executive alignment overlap
             maga_match = "🦅 MAGA Core Aligned" if ticker in maga_tickers else "Standard Coverage"
             
             # Fetch Live Volumetric Metrics
@@ -198,13 +206,13 @@ if triple_conviction:
                 st.markdown(f"### **{ticker}**")
                 st.caption(f"{data_store.SECTOR_MAP.get(ticker, 'General')} • {maga_match}")
                 
-                # Render color-coded badge style text for volume breakout
+                # Render color-coded break status
                 if vol_color == "green":
                     st.markdown(f"📈 **Live Volume:** :{vol_color}[{vol_label} 🔥 Breakout]")
                 elif vol_color == "red":
                     st.markdown(f"📉 **Live Volume:** :{vol_color}[{vol_label}]")
                 else:
-                    st.markdown(f"⚪ **Live Volume:** {vol_label}")
+                    st.markdown(f" Privatized / Asset Volume N/A")
                     
                 st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
     st.write("---")
