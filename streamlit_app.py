@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
 # --------------------------------------------------------
-# 1. Page Configuration & Layout
+# 1. App Core Engine Setup
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -22,9 +22,7 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 
 TODAY = datetime.now()
 
-# --------------------------------------------------------
-# 2. Hard Reset Cache Clear Controller (Sidebar Bypass)
-# --------------------------------------------------------
+# Hard cache reset hook
 st.sidebar.header("System Controls")
 if st.sidebar.button("🔄 Force Hard Refresh", use_container_width=True):
     st.cache_data.clear()
@@ -33,57 +31,72 @@ if st.sidebar.button("🔄 Force Hard Refresh", use_container_width=True):
     st.rerun()
 
 # --------------------------------------------------------
-# 3. High-Availability Streaming Politician Data Engine
+# 2. Resilient Data Stream Pipeline
 # --------------------------------------------------------
 @st.cache_data(ttl=60)
 def load_live_politician_data(cache_buster):
-    # Dynamic streaming flat-file target mirror
     live_csv_url = f"https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv?v={cache_buster}"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
     
     try:
         response = requests.get(live_csv_url, headers=headers, timeout=8)
-        
         if response.status_code == 200 and len(response.text) > 100:
             from io import StringIO
             df = pd.read_csv(StringIO(response.text))
             
-            # --- Robust Column Structural Mapping Fix ---
-            # Handles 'representative', 'politician', or fallback strings seamlessly
-            if "representative" in df.columns:
-                df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
-            elif "politician" in df.columns:
+            # STAGE 1: Force all raw headers to lowercase to strip database mismatches
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            
+            # STAGE 2: Flexible Key Mapping
+            # Lawmaker Identifier
+            if "politician" in df.columns:
                 df["Politician"] = df["politician"].fillna("Unknown Lawmaker")
+            elif "representative" in df.columns:
+                df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
+            elif "name" in df.columns:
+                df["Politician"] = df["name"].fillna("Unknown Lawmaker")
             else:
-                df["Politician"] = "Unknown Lawmaker"
-                
-            if "disclosure_date" in df.columns:
-                df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
-            elif "filing_date" in df.columns:
-                df["Filing Date"] = pd.to_datetime(df["filing_date"], errors='coerce')
-            else:
-                df["Filing Date"] = pd.to_datetime(df["disclosure_year"], errors='coerce')
+                # Fallback if the first matching string column works
+                string_cols = df.select_dtypes(include=['object']).columns
+                df["Politician"] = df[string_cols[0]].fillna("Unknown") if len(string_cols) > 0 else "Unknown Lawmaker"
 
-            # Standardized layout parsing
+            # Date Identifier
+            date_found = False
+            for date_col in ["filing_date", "disclosure_date", "date"]:
+                if date_col in df.columns:
+                    df["Filing Date"] = pd.to_datetime(df[date_col], errors='coerce')
+                    date_found = True
+                    break
+            if not date_found:
+                df["Filing Date"] = TODAY
+
+            # Ticker & Transaction Mechanics
             df["Chamber"] = "House"
-            df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
             
-            df["Type"] = df["type"].fillna("").astype(str).str.lower()
-            df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
-            df["Amount Range"] = df["amount"].fillna("Unknown").astype(str)
+            ticker_col = "ticker" if "ticker" in df.columns else (df.columns[1] if len(df.columns) > 1 else "")
+            if ticker_col in df.columns:
+                df["Ticker"] = df[ticker_col].fillna("N/A").astype(str).str.upper().str.strip()
+            else:
+                df["Ticker"] = "N/A"
+                
+            type_col = "type" if "type" in df.columns else ""
+            if type_col in df.columns:
+                df["Type"] = df[type_col].fillna("").astype(str).str.lower()
+                df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
+            else:
+                df["Type"] = "🟢 Purchase"
+                
+            amt_col = "amount" if "amount" in df.columns else ""
+            df["Amount Range"] = df[amt_col].fillna("Unknown").astype(str) if amt_col in df.columns else "Unknown"
             
-            # Clean dataframe operational bounds
+            # Data frame purification
             df = df.dropna(subset=["Filing Date"])
             df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
             
             return df.sort_values(by="Filing Date", ascending=False)
         else:
             return get_fallback_political_data()
-            
-    except Exception as e:
+    except Exception:
         return get_fallback_political_data()
 
 def get_fallback_political_data():
@@ -116,28 +129,20 @@ def get_insider_data():
     return pd.DataFrame(data)
 
 # --------------------------------------------------------
-# 4. Interactive Multi-Tab Dashboard Interface
+# 3. User Interface Frame Render
 # --------------------------------------------------------
 tab1, tab2 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures"])
 
-# --- TAB 1: CORPORATE INSIDERS ---
 with tab1:
     st.subheader("Form 4 Intelligence Feed")
     df_insider = get_insider_data()
-    
-    total_buys = len(df_insider[df_insider["Value ($)"] > 0])
-    total_capital = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
-    
     c1, c2 = st.columns(2)
-    c1.metric("Tracked Exec Purchases", f"{total_buys} Companies")
-    c2.metric("Total Tracked Buying Volume", f"${total_capital:,.0f}")
-    
+    c1.metric("Tracked Exec Purchases", f"{len(df_insider[df_insider['Value ($)'] > 0])} Companies")
+    c2.metric("Total Tracked Buying Volume", f"${df_insider[df_insider['Value ($)'] > 0]['Value ($)'].sum():,.0f}")
     st.dataframe(df_insider, hide_index=True, use_container_width=True)
 
-# --- TAB 2: POLITICIANS ---
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
-    
     current_minute_key = time.strftime("%Y%m%d-%H%M")
     df_poly = load_live_politician_data(current_minute_key)
     
@@ -146,22 +151,19 @@ with tab2:
         m1.metric("Recent Active Disclosures", f"{len(df_poly):,} Trades")
         m2.metric("Most Active Ticker", f"{df_poly['Ticker'].mode().get(0, 'N/A')}")
         
-        ticker_search = st.text_input("🔍 Filter by Stock Ticker (e.g., NVDA, MSFT)", "").upper().strip()
+        ticker_search = st.text_input("🔍 Filter by Stock Ticker", "").upper().strip()
         if ticker_search:
             df_poly = df_poly[df_poly["Ticker"] == ticker_search]
             
         if not df_poly.empty:
             df_poly["Filing Date"] = df_poly["Filing Date"].dt.strftime('%Y-%m-%d')
-            
             st.dataframe(
                 df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]].head(100), 
                 hide_index=True,
                 use_container_width=True
             )
-            
             st.write("---")
             st.caption("Filing Frequency by Individual Lawmaker (Top 10)")
-            politician_counts = df_poly["Politician"].value_counts().head(10)
-            st.bar_chart(politician_counts)
+            st.bar_chart(df_poly["Politician"].value_counts().head(10))
         else:
-            st.warning("No public data rows found matching that ticker right now.")
+            st.warning("No live data matches that ticker search query.")
