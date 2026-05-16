@@ -110,4 +110,32 @@ with t3:
             }
         )
     else:
-        st.info("No active block data matching watchlist
+        st.info("No active block data matching watchlist.")
+
+with t4:
+    st.subheader("Federal Portfolio Strategy")
+    try:
+        st.dataframe(pd.DataFrame(data_store.get_maga_portfolio_data()), hide_index=True, width="stretch")
+    except:
+        st.error("Static data feed offline.")
+
+with t5:
+    st.subheader("Watchlist Manager")
+    
+    with st.form("add_ticker_form", clear_on_submit=True):
+        new_tk = st.text_input("Enter Ticker Symbol:").upper().strip()
+        submitted = st.form_submit_button("➕ Add to Watchlist")
+        
+    if submitted and new_tk:
+        if new_tk not in st.session_state.watchlist:
+            st.session_state.watchlist.append(new_tk)
+            st.query_params["list"] = ",".join(st.session_state.watchlist)
+            st.rerun()
+            
+    st.write("### Currently Tracking:")
+    st.info(", ".join(st.session_state.watchlist))
+    
+    if st.button("🗑️ Reset Watchlist"):
+        st.session_state.watchlist = DEFAULT_TICKERS.copy()
+        st.query_params["list"] = ",".join(st.session_state.watchlist)
+        st.rerun()
