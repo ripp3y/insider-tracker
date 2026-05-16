@@ -28,9 +28,8 @@ TODAY = datetime.now()
 # --------------------------------------------------------
 # 2. Watchlist Session State Initialization
 # --------------------------------------------------------
-# This gives the app a memory bank so additions/removals stick!
 if "watchlist" not in st.session_state:
-    # Pre-populate it with your core tracking favorites
+    # Starting baseline for tracking
     st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
 # --------------------------------------------------------
@@ -70,7 +69,7 @@ def get_volume_breakout_metric_native(ticker):
         return "Feed Offline", 0.0, "gray"
 
 # --------------------------------------------------------
-# 3. Data Pipeline
+# 3. Data Pipeline Functions
 # --------------------------------------------------------
 @st.cache_data(ttl=300)
 def load_live_politician_data():
@@ -139,7 +138,17 @@ df_inst_raw = get_institutional_data()
 df_maga_raw = pd.DataFrame(data_store.get_maga_portfolio_data())
 
 # --------------------------------------------------------
-# 4. Sidebar Configuration & Aggregations
+# 4. CRITICAL FIX: Global Watchlist Lock Filter Execution
+# --------------------------------------------------------
+# If you have tickers in your watchlist, we restrict all datafeeds to ONLY analyze those tickers!
+if st.session_state.watchlist:
+    df_insider_raw = df_insider_raw[df_insider_raw["Ticker"].isin(st.session_state.watchlist)]
+    df_poly_raw = df_poly_raw[df_poly_raw["Ticker"].isin(st.session_state.watchlist)]
+    df_inst_raw = df_inst_raw[df_inst_raw["Ticker"].isin(st.session_state.watchlist)]
+    df_maga_raw = df_maga_raw[df_maga_raw["Ticker"].isin(st.session_state.watchlist)]
+
+# --------------------------------------------------------
+# Sidebar Configuration & Slider Sorting
 # --------------------------------------------------------
 st.sidebar.header("🐋 Whale Order Filters")
 min_insider_val = st.sidebar.slider("Minimum Insider Value ($)", 0, 1500000, 0, 50000)
@@ -158,10 +167,10 @@ combined_sectors = pd.concat([df_insider["Sector"], df_poly["Sector"], df_inst["
 if not combined_sectors.empty:
     st.sidebar.bar_chart(combined_sectors)
 else:
-    st.sidebar.caption("No data matches parameters.")
+    st.sidebar.caption("No tracked data matches current filters.")
 
 # --------------------------------------------------------
-# 5. Conviction Alerts Breakout Matrix
+# 5. Conviction Alerts Breakout Cross-Reference Engine
 # --------------------------------------------------------
 insider_tickers = set(df_insider_raw["Ticker"].unique())
 poly_tickers = set(df_poly_raw["Ticker"].unique())
@@ -194,7 +203,7 @@ if triple_conviction:
     st.write("---")
 
 # --------------------------------------------------------
-# 6. Tab Viewports (Added Tab 5: Dynamic Watchlist)
+# 6. Tab Viewports
 # --------------------------------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏢 Corporate Insiders", 
@@ -250,32 +259,27 @@ with tab4:
     mm2.metric("Dominant Allocation Overweight", "Semiconductors / Infrastructure")
     st.dataframe(df_maga[["Ticker", "Sector", "Holding Tier", "Estimated Value", "Action", "Thesis"]], hide_index=True, use_container_width=True)
 
-# NEW CODE: This powers the custom user watchlist tab
 with tab5:
     st.subheader("📋 Personalized High-Alpha Watchlist")
     st.caption("Add custom stock tickers here to monitor their real-time volume breakout statuses instantly.")
     
-    # 1. Search Box Input Row
     col_input, col_btn = st.columns([3, 1])
     with col_input:
         new_ticker = st.text_input("Enter Stock Ticker to Add", placeholder="e.g. SMCI, VRT, CEG", key="add_input").upper().strip()
     with col_btn:
-        st.write("##") # Visual alignment spacing
+        st.write("##") 
         if st.button("➕ Add Ticker", use_container_width=True):
             if new_ticker and new_ticker not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker)
-                st.rerun() # Instantly refreshes browser layout 
+                st.rerun() 
                 
     st.write("---")
     
-    # 2. Watchlist Metric Rows with Delete Controls
     if st.session_state.watchlist:
         for ticker in st.session_state.watchlist:
-            # Generate metrics using the native live volume fetcher
             vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
             sector_name = data_store.SECTOR_MAP.get(ticker, "Custom Tracker / Add-on")
             
-            # Layout alignment row
             metric_col, info_col, action_col = st.columns([2, 4, 1])
             
             with metric_col:
@@ -291,11 +295,10 @@ with tab5:
                 st.caption(f"Cross reference profiles check complete for asset.")
                 
             with action_col:
-                st.write("") # Micro spacing 
-                # Create a uniquely named minus button for every single ticker
+                st.write("") 
                 if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
                     st.session_state.watchlist.remove(ticker)
-                    st.rerun() # Auto updates screen immediately
+                    st.rerun() 
             st.write("---")
     else:
         st.info("Your watchlist is currently empty. Use the input panel above to track custom parameters.")
