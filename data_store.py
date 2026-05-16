@@ -7,15 +7,18 @@ SECTOR_MAP = {
     "NVDA": "Semiconductors / AI",
     "MRVL": "Semiconductors / AI",
     "UMC": "Semiconductors / AI",
+    "INTC": "Semiconductors / AI",
+    "TXN": "Semiconductors / AI",
     "LITE": "Optical Tech / Telecom",
     "FIX": "Industrial Infrastructure",
     "POWL": "Industrial Infrastructure",
     "BE": "Clean Energy / Utilities",
     "ALB": "Specialty Chemicals / Mining",
+    "COPX": "Copper Mining / Metals",
+    "ANFGF": "Copper Mining / Metals",
     "STX": "Data Storage / Hardware",
     "SNDK": "Data Storage / Hardware",
     "MSFT": "Enterprise Software / Cloud",
-    "TXN": "Semiconductors / AI",
     "LRN": "EdTech / Services"
 }
 
@@ -42,7 +45,8 @@ def get_insider_data_raw():
         {"Ticker": "BE", "Company": "Bloom Energy", "Insider": "KR Sridhar", "Role": "CEO", "Type": "🔴 Sell (10b5-1)", "Value ($)": -120000, "Filing Date": (TODAY - timedelta(days=5)).strftime('%Y-%m-%d')},
         {"Ticker": "NVDA", "Company": "NVIDIA Corp", "Insider": "Colette Kress", "Role": "CFO", "Type": "🔴 Sell", "Value ($)": -2300000, "Filing Date": (TODAY - timedelta(days=7)).strftime('%Y-%m-%d')},
         {"Ticker": "POWL", "Company": "Powell Industries", "Insider": "Brett Cope", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 320000, "Filing Date": (TODAY - timedelta(days=10)).strftime('%Y-%m-%d')},
-        {"Ticker": "ALB", "Company": "Albemarle Corp", "Insider": "Kent Masters", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 500000, "Filing Date": (TODAY - timedelta(days=12)).strftime('%Y-%m-%d')}
+        {"Ticker": "ALB", "Company": "Albemarle Corp", "Insider": "Kent Masters", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 500000, "Filing Date": (TODAY - timedelta(days=12)).strftime('%Y-%m-%d')},
+        {"Ticker": "COPX", "Company": "Global X Copper Miners ETF", "Insider": "Market Maker", "Role": "Institutional", "Type": "🟢 Buy", "Value ($)": 750000, "Filing Date": (TODAY - timedelta(days=14)).strftime('%Y-%m-%d')}
     ]
 
 def get_institutional_data_raw():
@@ -52,5 +56,6 @@ def get_institutional_data_raw():
         {"Filing Date": (TODAY - timedelta(days=3)).strftime('%Y-%m-%d'), "Ticker": "FIX", "Institution": "Fidelity Management", "Type": "🟢 Position Increase", "Shares Changed": 180000, "Value ($)": 62000000},
         {"Filing Date": (TODAY - timedelta(days=5)).strftime('%Y-%m-%d'), "Ticker": "MRVL", "Institution": "Renaissance Technologies", "Type": "🟢 Position Increase", "Shares Changed": 850000, "Value ($)": 55000000},
         {"Filing Date": (TODAY - timedelta(days=6)).strftime('%Y-%m-%d'), "Ticker": "ALB", "Institution": "Citadel Advisors", "Type": "🟢 Position Increase", "Shares Changed": 340000, "Value ($)": 41000000},
-        {"Filing Date": (TODAY - timedelta(days=9)).strftime('%Y-%m-%d'), "Ticker": "LITE", "Institution": "Point72 Asset Mgmt", "Type": "🔴 Position Decrease", "Shares Changed": -410000, "Value ($)": -22000000}
+        {"Filing Date": (TODAY - timedelta(days=9)).strftime('%Y-%m-%d'), "Ticker": "LITE", "Institution": "Point72 Asset Mgmt", "Type": "🔴 Position Decrease", "Shares Changed": -410000, "Value ($)": -22000000},
+        {"Filing Date": (TODAY - timedelta(days=15)).strftime('%Y-%m-%d'), "Ticker": "ANFGF", "Institution": "Antofagasta Plc", "Type": "🟢 Position Increase", "Shares Changed": 600000, "Value ($)": 18000000}
     ]
