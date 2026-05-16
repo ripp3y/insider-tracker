@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
-import os
-from io import StringIO
+import json
+import streamlit.components.v1 as components
 import data_store
 
 warnings.filterwarnings("ignore")
@@ -12,31 +12,65 @@ st.set_page_config(page_title="Asymmetry", page_icon="👁️‍🗨️", layout
 st.title("👁️‍🗨️ Asymmetry")
 st.caption("Alpha Tracking Dashboard")
 
-# --- PERSISTENT STORAGE MANAGEMENT ---
-WATCHLIST_FILE = "watchlist.txt"
 DEFAULT_TICKERS = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-def load_watchlist():
-    if os.path.exists(WATCHLIST_FILE):
-        with open(WATCHLIST_FILE, "r") as f:
-            tickers = [line.strip().upper() for line in f.readlines() if line.strip()]
-            if tickers:
-                return tickers
-    return DEFAULT_TICKERS.copy()
+# --- BROWSER LOCAL STORAGE ENGINE ---
+# Hidden HTML/JS bridge to pass data straight to your device's browser memory
+st.markdown('<div id="local-storage-patch" style="display:none;"></div>', unsafe_allow_html=True)
 
-def save_watchlist(tickers):
-    with open(WATCHLIST_FILE, "w") as f:
-        for t in tickers:
-            f.write(f"{t}\n")
+storage_bridge = components.html(
+    """
+    <script>
+    // Communicate local storage back to Streamlit's state frames
+    const sendToStreamlit = (data) => {
+        window.parent.postMessage({
+            isStreamlitMessage: true,
+            type: "streamlit:setComponentValue",
+            value: data
+        }, "*");
+    };
 
-# Initialize global tracking list
+    // Listen for storage read requests from Python
+    window.addEventListener("message", (event) => {
+        if (event.data.type === "read") {
+            const saved = localStorage.getItem("asymmetry_watchlist");
+            sendToStreamlit(saved ? JSON.parse(saved) : null);
+        }
+        if (event.data.type === "write") {
+            localStorage.setItem("asymmetry_watchlist", JSON.stringify(event.data.watchlist));
+        }
+    });
+    
+    // Initial auto-read on load
+    setTimeout(() => {
+        const saved = localStorage.getItem("asymmetry_watchlist");
+        if (saved) sendToStreamlit(JSON.parse(saved));
+    }, 300);
+    </script>
+    """,
+    height=0,
+)
+
+# Manage watchlist arrays via Session State fallback chains
 if "watchlist" not in st.session_state:
-    st.session_state.watchlist = load_watchlist()
+    st.session_state.watchlist = DEFAULT_TICKERS.copy()
+    st.session_state.storage_synced = False
+
+# Capture incoming list tokens from the JavaScript frame
+if storage_bridge is not None and not st.session_state.storage_synced:
+    try:
+        browser_saved = storage_bridge
+        if isinstance(browser_saved, list) and len(browser_saved) > 0:
+            st.session_state.watchlist = browser_saved
+            st.session_state.storage_synced = True
+            st.rerun()
+    except:
+        pass
 
 wl = st.session_state.watchlist
 
 
-# --- FLATTENED DATA ENGINE ---
+# --- DATA ENGINE ---
 @st.cache_data(ttl=300)
 def get_clean_data():
     try:
@@ -54,7 +88,7 @@ def get_clean_data():
     except:
         df_w = pd.DataFrame()
 
-    # Standardize uppercase string matches
+    # Standardize string casing rules uniformly 
     if not df_i.empty and "Ticker" in df_i.columns:
         df_i["Ticker"] = df_i["Ticker"].astype(str).str.upper().str.strip()
     if not df_p.empty and "Ticker" in df_p.columns:
@@ -66,7 +100,7 @@ def get_clean_data():
 
 raw_insider, raw_poly, raw_whale = get_clean_data()
 
-# Outer filtering engine
+# Dataframe slices
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
@@ -80,7 +114,7 @@ if not df_insider.empty and "Value ($)" in df_insider.columns:
     df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider]
 
 
-# --- TABS SYSTEM ---
+# --- VIEWPORTS SYSTEM ---
 t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
 with t1:
@@ -121,7 +155,8 @@ with t5:
     if submitted and new_tk:
         if new_tk not in st.session_state.watchlist:
             st.session_state.watchlist.append(new_tk)
-            save_watchlist(st.session_state.watchlist)  # Lock into disk file
+            # Update the browser's local memory instantly
+            components.html(f"""<script>localStorage.setItem("asymmetry_watchlist", '{json.dumps(st.session_state.watchlist)}');</script>""", height=0)
             st.rerun()
             
     st.write("### Currently Tracking:")
@@ -129,5 +164,5 @@ with t5:
     
     if st.button("🗑️ Reset Watchlist"):
         st.session_state.watchlist = DEFAULT_TICKERS.copy()
-        save_watchlist(st.session_state.watchlist)  # Lock defaults into disk file
+        components.html(f"""<script>localStorage.setItem("asymmetry_watchlist", '{json.dumps(st.session_state.watchlist)}');</script>""", height=0)
         st.rerun()
