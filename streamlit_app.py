@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
+import yfinance as yf
 from io import StringIO
 from datetime import datetime
 
@@ -24,6 +25,46 @@ st.title("👁️‍🗨️ Asymmetry")
 st.caption("Tracking legal alpha by monitoring corporate executives, political disclosures, and institutional whale capital.")
 
 TODAY = datetime.now()
+
+# --------------------------------------------------------
+# Live Market Volume Analytics (Breakout Engine)
+# --------------------------------------------------------
+@st.cache_data(ttl=900)  # Cache market data for 15 minutes
+def get_volume_breakout_metric(ticker):
+    """
+    Compares today's live volume against the 20-day average volume.
+    Returns formatted string, percentage float, and a color flag.
+    """
+    # Quick guard for ETFs or unique tickers that might mismatch
+    if ticker in ["ANFGF"]: 
+        return "N/A Volume", 0.0, "gray"
+        
+    try:
+        stock = yf.Ticker(ticker)
+        # Fetch 30 days of daily data to safely compute a 20-day average
+        hist = stock.history(period="30d")
+        
+        if hist.empty or len(hist) < 20:
+            return "No Volume Data", 0.0, "gray"
+            
+        # Calculate 20-day average volume (excluding the most recent/live day)
+        avg_volume_20d = hist["Volume"].iloc[-21:-1].mean()
+        # Get current day live volume
+        live_volume = hist["Volume"].iloc[-1]
+        
+        if avg_volume_20d == 0:
+            return "0 Avg Vol", 0.0, "gray"
+            
+        # Percent calculation
+        pct_of_avg = (live_volume / avg_volume_20d) * 100
+        
+        # Color state based on breakout performance
+        # If it's trading above 100% of its normal monthly average, it's breaking out
+        color = "green" if pct_of_avg >= 100 else "red"
+        
+        return f"{pct_of_avg:.1f}% of 20D Avg", pct_of_avg, color
+    except:
+        return "Market Closed/Error", 0.0, "gray"
 
 # --------------------------------------------------------
 # 2. Hybrid Streamlit Data Pipeline
@@ -103,6 +144,7 @@ def get_institutional_data():
 df_insider_raw = get_insider_data()
 df_poly_raw = load_live_politician_data()
 df_inst_raw = get_institutional_data()
+df_maga_raw = pd.DataFrame(data_store.get_maga_portfolio_data())
 
 # --------------------------------------------------------
 # 3. Sidebar Configuration & Aggregations
@@ -127,25 +169,43 @@ else:
     st.sidebar.caption("No data matches parameters.")
 
 # --------------------------------------------------------
-# 4. Asymmetry Triple-Cross Reference Engine
+# 4. Asymmetry Quad-Cross Reference Engine with Breakout Volume
 # --------------------------------------------------------
 insider_tickers = set(df_insider_raw["Ticker"].unique())
 poly_tickers = set(df_poly_raw["Ticker"].unique())
 inst_tickers = set(df_inst_raw["Ticker"].unique())
+maga_tickers = set(df_maga_raw["Ticker"].unique())
 
+# Core triple cross
 triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
 
 if triple_conviction:
-    st.error("⚡ **Asymmetry Alert: Triple Conviction Matrix Activated**")
+    st.error("⚡ **Asymmetry Alert: Triple Conviction Breakout Matrix**")
     cols = st.columns(len(triple_conviction))
     for idx, ticker in enumerate(triple_conviction):
         with cols[idx]:
             c_actions = df_insider_raw[df_insider_raw["Ticker"] == ticker]
             p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker]
             i_actions = df_inst_raw[df_inst_raw["Ticker"] == ticker]
+            
+            # Check for executive alignment overlap
+            maga_match = "🦅 MAGA Core Aligned" if ticker in maga_tickers else "Standard Coverage"
+            
+            # Fetch Live Volumetric Metrics
+            vol_label, vol_val, vol_color = get_volume_breakout_metric(ticker)
+            
             with st.container(border=True):
                 st.markdown(f"### **{ticker}**")
-                st.caption(data_store.SECTOR_MAP.get(ticker, "General"))
+                st.caption(f"{data_store.SECTOR_MAP.get(ticker, 'General')} • {maga_match}")
+                
+                # Render color-coded badge style text for volume breakout
+                if vol_color == "green":
+                    st.markdown(f"📈 **Live Volume:** :{vol_color}[{vol_label} 🔥 Breakout]")
+                elif vol_color == "red":
+                    st.markdown(f"📉 **Live Volume:** :{vol_color}[{vol_label}]")
+                else:
+                    st.markdown(f"⚪ **Live Volume:** {vol_label}")
+                    
                 st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
     st.write("---")
 
@@ -161,8 +221,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 with tab1:
     st.subheader("Form 4 Intelligence Feed")
-    
-    # Aggregate Dollar Volume Calculations
     total_insider_buys = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
     total_insider_sells = df_insider[df_insider["Value ($)"] < 0]["Value ($)"].sum()
     
@@ -174,8 +232,6 @@ with tab1:
 
 with tab2:
     st.subheader("Live Capitol Hill Transactions")
-    
-    # Estimated Maximum Commitment Volume
     poly_purchases = df_poly[df_poly["Type"] == "🟢 Purchase"]["Numeric Max"].sum()
     poly_sales = df_poly[df_poly["Type"] == "🔴 Sale"]["Numeric Max"].sum()
     
@@ -196,8 +252,6 @@ with tab2:
 
 with tab3:
     st.subheader("Major Institutional Block Trade Changes")
-    
-    # Institutional Aggregates
     inst_inflow = df_inst[df_inst["Value ($)"] > 0]["Value ($)"].sum()
     inst_outflow = df_inst[df_inst["Value ($)"] < 0]["Value ($)"].sum()
     
@@ -211,11 +265,9 @@ with tab4:
     st.subheader("🇺🇸 High-Conviction Federal Executive Tracker")
     st.caption("Aggregated tracking of core positions, recent rotation trends, and structural policy alignment plays.")
     
-    # Load dynamic MAGA structural portfolio
-    df_maga = pd.DataFrame(data_store.get_maga_portfolio_data())
+    df_maga = df_maga_raw.copy()
     df_maga["Sector"] = df_maga["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
     
-    # Strategic High-Conviction Visual Indicators
     mm1, mm2 = st.columns(2)
     mm1.metric("Est. Minimum Portfolio Allocation Tier", "$220,000,000")
     mm2.metric("Dominant Allocation Overweight", "Semiconductors / Infrastructure")
