@@ -37,53 +37,48 @@ def compact_amount(amount_str):
     return amount_str
 
 # --------------------------------------------------------
-# 2. Permanent Official US Senate Data Engine
+# 2. Open Public Political Disclosures Processing Engine
 # --------------------------------------------------------
 @st.cache_data(ttl=600)  
 def load_live_politician_data():
-    # Direct access to the official public Senate disclosure data infrastructure
-    official_senate_url = "https:// senate-stock-watcher-data.s3.amazonaws.com/data/all_transactions.json"
-    backup_senate_url = "https://raw.githubusercontent.com/datasets/congress-legislators/main/data/legislators-current.csv"
-    
-    # Cleaning the exact string to avoid configuration blocks
-    target_url = official_senate_url.replace(" ", "")
+    # Connecting to a completely open, unrestricted public data infrastructure mirror
+    unrestricted_mirror_url = "https://house-stock-watcher-data.s3.amazonaws.com/data/all_transactions.json"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
     try:
-        response = requests.get(target_url, headers=headers, timeout=12)
+        response = requests.get(unrestricted_mirror_url, headers=headers, timeout=15)
         
-        # If primary official stream is undergoing network maintenance, handle cleanly
-        if response.status_code != 200:
-            return None, f"Official disclosure registry returned status code: {response.status_code}"
+        if response.status_code == 200:
+            raw_data = response.json()
+            df = pd.DataFrame(raw_data)
             
-        raw_data = response.json()
-        df = pd.DataFrame(raw_data)
-        
-        if df.empty:
-            return None, "No recent rows found inside the official ledger."
+            if df.empty:
+                return None, "The public pipeline registry layer returned an empty frame."
             
-        # Parse and align the official schema variables safely
-        df["Filing Date"] = pd.to_datetime(df["transaction_date"], errors='coerce')
-        df["Politician"] = df["senator"].fillna("Unknown Legislator")
-        df["Chamber"] = "Senate"
-        df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
-        
-        df["Type"] = df["type"].fillna("").astype(str).str.lower()
-        df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
-        
-        df["Amount Range"] = df["amount"].apply(compact_amount)
-        
-        # Filter out corrupted dates or non-stock tickers (like options options or cryptos)
-        df = df.dropna(subset=["Filing Date"])
-        df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
-        
-        return df.sort_values(by="Filing Date", ascending=False), None
-        
+            # Map structural data formats cleanly to prevent indexing runtime crashes
+            df["Filing Date"] = pd.to_datetime(df["transaction_date"], errors='coerce')
+            df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
+            df["Chamber"] = "House"
+            df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
+            
+            df["Type"] = df["type"].fillna("").astype(str).str.lower()
+            df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
+            
+            df["Amount Range"] = df["amount"].apply(compact_amount)
+            
+            # Trim broken fields, extreme historic anomalies, or options derivative artifacts
+            df = df.dropna(subset=["Filing Date"])
+            df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
+            
+            return df.sort_values(by="Filing Date", ascending=False), None
+        else:
+            return None, f"Public registry gateway index returned code: {response.status_code}"
+            
     except Exception as e:
-        return None, f"Network handshake exception: {str(e)}"
+        return None, f"Gateway network interface dropped connection: {str(e)}"
 
 def get_insider_data():
     data = [
@@ -133,6 +128,6 @@ with tab2:
                 use_container_width=True
             )
         else:
-            st.warning("No official disclosures found matching that ticker right now.")
+            st.warning("No public data rows found matching that ticker right now.")
     else:
-        st.warning("No historical entries returned from the registry stream.")
+        st.warning("No entries currently returned from the public ledger.")
