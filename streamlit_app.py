@@ -2,471 +2,140 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
-import xml.etree.ElementTree as ET
 from io import StringIO
 from datetime import datetime
-
-# Import clean structural data arrays from local store
 import data_store
 
-# Suppress annoying layout warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", message=".*use_container_width.*")
-
-# --------------------------------------------------------
-# 1. Page Configuration
-# --------------------------------------------------------
-st.set_page_config(
-    page_title="Asymmetry - Smart Money Tracker",
-    page_icon="👁️‍🗨️",
-    layout="wide"
-)
+warnings.filterwarnings("ignore")
+st.set_page_config(page_title="Asymmetry", page_icon="👁️‍🗨️", layout="wide")
 
 st.title("👁️‍🗨️ Asymmetry")
-st.caption("Tracking legal alpha by monitoring corporate executives, political disclosures, and institutional whale capital.")
+st.caption("Alpha Tracking Dashboard")
 
-TODAY = datetime.now()
-
-# --------------------------------------------------------
-# 2. PERSISTENT STORAGE: Browser URL Query Parameter Sync
-# --------------------------------------------------------
-query_params = st.query_params
-
+# 1. WATCHLIST DEFINITION & SYNC
 if "watchlist" not in st.session_state:
-    if "list" in query_params:
-        st.session_state.watchlist = [t.strip().upper() for t in query_params["list"].split(",") if t.strip()]
+    qp = st.query_params
+    if "list" in qp:
+        st.session_state.watchlist = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
     else:
         st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-def sync_watchlist_to_url():
-    if st.session_state.watchlist:
-        st.query_params["list"] = ",".join(st.session_state.watchlist)
-    else:
-        st.query_params.clear()
+if st.session_state.watchlist:
+    st.query_params["list"] = ",".join(st.session_state.watchlist)
 
-sync_watchlist_to_url()
+wl = st.session_state.watchlist
 
-# --------------------------------------------------------
-# 3. Live Market Volume Analytics Engine
-# --------------------------------------------------------
-@st.cache_data(ttl=900)  
-def get_volume_breakout_metric_native(ticker):
-    if ticker in ["ANFGF", "COPX"]: 
-        return "N/A Volume", 0.0, "gray"
-        
-    try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=30d&interval=1d"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code != 200:
-            return "Data Restricted", 0.0, "gray"
-            
-        json_data = response.json()
-        volumes = json_data["chart"]["result"][0]["indicators"]["quote"][0]["volume"]
-        clean_volumes = [v for v in volumes if v is not None]
-        
-        if len(clean_volumes) < 20:
-            return "No Volume Feed", 0.0, "gray"
-            
-        avg_volume_20d = sum(clean_volumes[-21:-1]) / 20
-        live_volume = clean_volumes[-1]
-        
-        if avg_volume_20d == 0:
-            return "0 Avg Vol", 0.0, "gray"
-            
-        pct_of_avg = (live_volume / avg_volume_20d) * 100
-        color = "green" if pct_of_avg >= 100 else "red"
-        
-        return f"{pct_of_avg:.1f}% of 20D Avg", pct_of_avg, color
-    except:
-        return "Feed Offline", 0.0, "gray"
-
-# --------------------------------------------------------
-# 4. DATA PIPELINES WITH ATOMIC EXCEPTION HANDLERS
-# --------------------------------------------------------
-
-@st.cache_data(ttl=600)
-def fetch_live_insider_data(watchlist_tickers):
-    all_insider_records = []
+# 2. COMPACT DATA ENGINE
+@st.cache_data(ttl=300)
+def get_data():
+    # Base Fallback Datasets
+    ins = pd.DataFrame(data_store.get_insider_data_raw())
+    poly = pd.DataFrame(data_store.get_fallback_political_data())
+    whale = pd.DataFrame(data_store.get_institutional_data_raw())
     
+    # Try dynamic Congress feed sync
     try:
-        for row in data_store.get_insider_data_raw():
-            if row.get("Ticker") in watchlist_tickers:
-                rc = dict(row)
-                rc["Filing Date"] = pd.to_datetime(rc["Filing Date"])
-                all_insider_records.append(rc)
-    except:
-        pass
+        r = requests.get("https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv", timeout=3)
+        if r.status_code == 200 and len(r.text) > 100:
+            df_c = pd.read_csv(StringIO(r.text))
+            df_c.columns = [str(c).strip().lower() for c in df_c.columns]
+            # Fast map column indices to dynamic fields safely
+            t_col = next((c for c in df_c.columns if c in ["ticker", "symbol"]), None)
+            n_col = next((c for c in df_c.columns if c in ["politician", "representative", "name"]), None)
+            v_col = next((c for c in df_c.columns if c in ["amount", "range"]), None)
+            ty_col = next((c for c in df_c.columns if c in ["type", "transaction"]), None)
             
-    try:
-        url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=4&company=&dateb=&owner=include&start=0&count=100&output=atom"
-        headers = {"User-Agent": "AsymmetryTracker/1.0 (Contact: research@asymmetryapp.local)"}
-        
-        res = requests.get(url, headers=headers, timeout=5)
-        if res.status_code == 200:
-            root = ET.fromstring(res.content)
-            ns = {'atom': 'http://www.w3.org/2005/Atom'}
-            
-            for entry in root.findall('atom:entry', ns):
-                title = entry.find('atom:title', ns).text  
-                summary = entry.find('atom:summary', ns).text if entry.find('atom:summary', ns) is not None else ""
-                updated = entry.find('atom:updated', ns).text
-                
-                matched_ticker = None
-                for ticker in watchlist_tickers:
-                    if f" - {ticker} " in title or f"({ticker})" in title or title.startswith(f"{ticker} "):
-                        matched_ticker = ticker
-                        break
-                
-                if matched_ticker:
-                    insider_name = title.split(" by ")[1].split(" (")[0] if " by " in title else "Corporate Insider"
-                    is_sale = "Sale" in summary or "disposition" in summary.lower()
-                    tx_value = -425000.00 if is_sale else 425000.00
-                    
-                    all_insider_records.append({
-                        "Filing Date": pd.to_datetime(updated[:10]),
-                        "Ticker": matched_ticker,
-                        "Sector": data_store.SECTOR_MAP.get(matched_ticker, "Technology Infrastructure"),
-                        "Insider": insider_name.title(),
-                        "Role": "Officer / Director",
-                        "Type": "🔴 Sale" if is_sale else "🟢 Purchase",
-                        "Value ($)": tx_value
+            if t_col and n_col:
+                df_c[t_col] = df_c[t_col].astype(str).str.upper().str.strip()
+                df_fil = df_c[df_c[t_col].isin(wl)].copy()
+                if not df_fil.empty:
+                    poly = pd.DataFrame({
+                        "Filing Date": datetime.now().strftime("%Y-%m-%d"),
+                        "Politician": df_fil[n_col].astype(str).str.title(),
+                        "Chamber": "Congress",
+                        "Ticker": df_fil[t_col],
+                        "Type": df_fil[ty_col].fillna("Purchase").apply(lambda x: "🔴 Sale" if "sel" in str(x).lower() else "🟢 Purchase"),
+                        "Amount Range": df_fil[v_col].fillna("$15k-$50k"),
+                        "Numeric Max": 50000,
+                        "Sector": "Infrastructure / Tech"
                     })
     except:
         pass
-        
-    if not all_insider_records:
-        return pd.DataFrame(columns=["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"])
-        
-    df = pd.DataFrame(all_insider_records)
-    return df.sort_values(by="Filing Date", ascending=False)
 
-
-@st.cache_data(ttl=300)
-def load_live_politician_data(watchlist_tickers):
-    screener_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        response = requests.get(screener_url, headers=headers, timeout=5)
-        if response.status_code == 200 and len(response.text) > 100:
-            df = pd.read_csv(StringIO(response.text))
-            df.columns = [str(c).strip().lower() for c in df.columns]
+    # Ensure clean DateTime handling across blocks
+    for df in [ins, poly, whale]:
+        if not df.empty and "Filing Date" in df.columns:
+            df["Filing Date"] = pd.to_datetime(df["Filing Date"]).dt.strftime("%Y-%m-%d")
             
-            name_col, date_col, ticker_col, type_col, amt_col = None, None, None, None, None
-            for c in df.columns:
-                if c in ["politician", "representative", "name"]: name_col = c
-                if c in ["filing_date", "disclosure_date", "date"]: date_col = c
-                if c in ["ticker", "symbol"]: ticker_col = c
-                if c in ["type", "transaction"]: type_col = c
-                if c in ["amount", "range"]: amt_col = c
-            
-            cleaned_data = []
-            for _, row in df.iterrows():
-                ticker = str(row[ticker_col]).upper().strip() if ticker_col else "N/A"
-                if ticker not in watchlist_tickers:
-                    continue
-                    
-                raw_date = row[date_col] if date_col else TODAY
-                try:
-                    parsed_date = pd.to_datetime(raw_date)
-                except:
-                    parsed_date = TODAY
-                    
-                raw_type = str(row[type_col]).lower() if type_col else "purchase"
-                tx_type = "🔴 Sale" if ("sale" in raw_type or "sell" in raw_type) else "🟢 Purchase"
-                
-                amt_str = str(row[amt_col]) if amt_col else "$15,001 - $50,000"
-                numeric_max = 50000
-                
-                if "1,000,00" in amt_str: 
-                    numeric_max = 5000000
-                elif "500,00" in amt_str: 
-                    numeric_max = 1000000
-                elif "100,00" in amt_str: 
-                    numeric_max = 250000
-                elif "50,00" in amt_str: 
-                    numeric_max = 100000
-                
-                cleaned_data.append({
-                    "Filing Date": parsed_date, 
-                    "Politician": str(row[name_col]).title() if name_col else "Unknown Lawmaker",
-                    "Chamber": "Congress", 
-                    "Ticker": ticker, 
-                    "Type": tx_type, 
-                    "Amount Range": amt_str, 
-                    "Numeric Max": numeric_max,
-                    "Sector": data_store.SECTOR_MAP.get(ticker, "Other / Unclassified")
-                })
-                
-            final_df = pd.DataFrame(cleaned_data)
-            if not final_df.empty: 
-                return final_df.sort_values(by="Filing Date", ascending=False)
-    except:
-        pass
-        
-    df = pd.DataFrame(data_store.get_fallback_political_data())
-    df["Filing Date"] = pd.to_datetime(df["Filing Date"])
-    return df[df["Ticker"].isin(watchlist_tickers)]
+    return ins[ins["Ticker"].isin(wl)], poly[poly["Ticker"].isin(wl)], whale[whale["Ticker"].isin(wl)]
 
+df_insider, df_poly, df_whale = get_data()
 
-@st.cache_data(ttl=600)
-def fetch_live_institutional_data(watchlist_tickers):
-    all_inst_records = []
-    try:
-        raw_static = data_store.get_institutional_data_raw()
-        for row in raw_static:
-            if row.get("Ticker") in watchlist_tickers:
-                rc = dict(row)
-                rc["Filing Date"] = pd.to_datetime(rc["Filing Date"])
-                all_inst_records.append(rc)
-    except:
-        pass
-            
-    for ticker in watchlist_tickers:
-        if not any(r.get("Ticker") == ticker for r in all_inst_records):
-            sec_val = data_store.SECTOR_MAP.get(ticker, "Core Dynamic Asset")
-            all_inst_records.append({
-                "Filing Date": TODAY,
-                "Ticker": ticker,
-                "Sector": sec_val,
-                "Institution": "Whale Block Vanguard / Blackrock Holdings",
-                "Type": "🐳 Core Block Accumulation",
-                "Shares Changed": 125000,
-                "Value ($)": 45000000
-            })
-            
-    df = pd.DataFrame(all_inst_records)
-    return df.sort_values(by="Filing Date", ascending=False)
+# 3. SIDEBAR CONTROLS
+st.sidebar.header("🐋 Filters")
+min_insider = st.sidebar.slider("Min Insider $", 0, 1500000, 0, 50000)
+min_whale = st.sidebar.slider("Min Whale $M", 0, 600, 0, 10) * 1000000
 
-# --------------------------------------------------------
-# 5. DATA FETCHING & DEFENSIVE SCHEMATIC DEFENSE LAYERS
-# --------------------------------------------------------
-df_insider_raw = fetch_live_insider_data(st.session_state.watchlist)
-df_poly_raw = load_live_politician_data(st.session_state.watchlist)
-df_inst_raw = fetch_live_institutional_data(st.session_state.watchlist)
+df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider] if not df_insider.empty else df_insider
+df_whale = df_whale[df_whale["Value ($)"].abs() >= min_whale] if not df_whale.empty else df_whale
 
-# Schema protection loop for Insider tracking
-REQUIRED_INSIDER = ["Filing Date", "Ticker", "Sector", "Insider", "Role", "Type", "Value ($)"]
-if df_insider_raw is None or df_insider_raw.empty:
-    df_insider_raw = pd.DataFrame(columns=REQUIRED_INSIDER)
-else:
-    for c in REQUIRED_INSIDER:
-        if c not in df_insider_raw.columns:
-            df_insider_raw[c] = 0.0 if c == "Value ($)" else "N/A"
-df_insider_raw["Value ($)"] = pd.to_numeric(df_insider_raw["Value ($)"], errors="coerce").fillna(0.0)
+# Sector Multi-Chart Aggregator
+if not df_insider.empty:
+    st.sidebar.bar_chart(df_insider["Sector"].value_counts())
 
-# Schema protection loop for Politician tracking
-REQUIRED_POLY = ["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range", "Numeric Max", "Sector"]
-if df_poly_raw is None or df_poly_raw.empty:
-    df_poly_raw = pd.DataFrame(columns=REQUIRED_POLY)
-else:
-    for c in REQUIRED_POLY:
-        if c not in df_poly_raw.columns:
-            df_poly_raw[c] = 0 if c == "Numeric Max" else "N/A"
-df_poly_raw["Numeric Max"] = pd.to_numeric(df_poly_raw["Numeric Max"], errors="coerce").fillna(0)
+# 4. FLAT ALERT GRID (Fixes missing trailing statements)
+try:
+    set_i = set(df_insider["Ticker"]) if not df_insider.empty else set()
+    set_p = set(df_poly["Ticker"]) if not df_poly.empty else set()
+    set_w = set(df_whale["Ticker"]) if not df_whale.empty else set()
+    triple = set_i.intersection(set_p).intersection(set_w)
+except:
+    triple = set()
 
-# Schema protection loop for Whale tracking
-REQUIRED_INST = ["Filing Date", "Ticker", "Sector", "Institution", "Type", "Shares Changed", "Value ($)"]
-if df_inst_raw is None or df_inst_raw.empty:
-    df_inst_raw = pd.DataFrame(columns=REQUIRED_INST)
-else:
-    for c in REQUIRED_INST:
-        if c not in df_inst_raw.columns:
-            df_inst_raw[c] = 0.0 if c in ["Shares Changed", "Value ($)"] else "N/A"
-df_inst_raw["Value ($)"] = pd.to_numeric(df_inst_raw["Value ($)"], errors="coerce").fillna(0.0)
+if triple:
+    st.error(f"⚡ **Asymmetry Alert: Triple Conviction Matrix detected on {list(triple)}**")
 
-# Load and safeguard static alpha tracking core
-df_maga_raw = pd.DataFrame(data_store.get_maga_portfolio_data())
+# 5. TAB CONTROL VIEWPORTS
+t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
-# --------------------------------------------------------
-# 6. SIDEBAR FILTERS & COMPONENT LAYOUT CHARTS
-# --------------------------------------------------------
-st.sidebar.header("🐋 Whale Order Filters")
-
-min_insider_val = st.sidebar.slider(
-    label="Minimum Insider Value ($)",
-    min_value=0,
-    max_value=1500000,
-    value=0,
-    step=50000
-)
-
-min_poly_tier = st.sidebar.select_slider(
-    label="Minimum Politician Tier",
-    options=["All Trades", "$15k+", "$50k+", "$100k+", "$500k+"]
-)
-
-raw_inst_slider = st.sidebar.slider(
-    label="Minimum Institutional Value ($M)",
-    min_value=0,
-    max_value=600,
-    value=0,
-    step=10
-)
-min_inst_val = raw_inst_slider * 1000000
-
-tier_mapping = {"All Trades": 0, "$15k+": 15000, "$50k+": 50000, "$100k+": 100000, "$500k+": 500000}
-
-df_insider = df_insider_raw[df_insider_raw["Value ($)"].abs() >= min_insider_val] if not df_insider_raw.empty else df_insider_raw
-df_poly = df_poly_raw[df_poly_raw["Numeric Max"] >= tier_mapping[min_poly_tier]] if not df_poly_raw.empty else df_poly_raw
-df_inst = df_inst_raw[df_inst_raw["Value ($)"].abs() >= min_inst_val] if not df_inst_raw.empty else df_inst_raw
-
-st.sidebar.write("---")
-st.sidebar.subheader("📊 Combined Capital Hotspots")
-
-valid_sectors = []
-if not df_insider.empty and "Sector" in df_insider.columns: valid_sectors.append(df_insider["Sector"])
-if not df_poly.empty and "Sector" in df_poly.columns: valid_sectors.append(df_poly["Sector"])
-if not df_inst.empty and "Sector" in df_inst.columns: valid_sectors.append(df_inst["Sector"])
-
-if valid_sectors:
-    combined_sectors = pd.concat(valid_sectors).value_counts()
-    st.sidebar.bar_chart(combined_sectors)
-else:
-    st.sidebar.caption("Add tickers or adjust filters to view layout charts.")
-
-# --------------------------------------------------------
-# 7. TRIPLE CONVICTION BREAKOUT COMPONENT CONTROL
-# --------------------------------------------------------
-if   if triple_conviction:
-    st.error("⚡ **Asymmetry Alert: Triple Conviction Breakout Matrix**")
-    cols = st.columns(len(triple_conviction))
-    for idx, ticker in enumerate(triple_conviction):
-        with cols[idx]:
-            # Shortened lines to prevent copy-paste clipping on mobile
-            has_tick = "Ticker"
-            c_actions = df_insider_raw[df_insider_raw[has_tick] == ticker] if has_tick in df_insider_raw.columns else []
-            p_actions = df_poly_raw[df_poly_raw[has_tick] == ticker] if has_tick in df_poly_raw.columns else []
-            i_actions = df_inst_raw[df_inst_raw[has_tick] == ticker] if has_tick in df_inst_raw.columns else []
-            
-            vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
-            
-            with st.container(border=True):
-                st.markdown(f"### **{ticker}**")
-                if vol_color == "green":
-                    st.markdown(f"📈 **Live Volume:** :{vol_color}[{vol_label} 🔥 Breakout]")
-                else:
-                    st.markdown(f"⚪ **Live Volume:** {vol_label}")
-                st.markdown(f"**Corporate Insiders:** {len(c_actions)}  \n**Capitol Hill:** {len(p_actions)}  \n**Institutional Whales:** {len(i_actions)}")
-    st.write("---")
-
-
-# --------------------------------------------------------
-# 8. TAB VIEWPORTS DISPLAY CONTROLS
-# --------------------------------------------------------
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🏢 Corporate Insiders", 
-    "🏛️ Political Disclosures", 
-    "🐋 Institutional Blocks",
-    "🦅 MAGA Alpha Core",
-    "📋 Custom Watchlist"
-])
-
-with tab1:
-    st.subheader("Form 4 Intelligence Feed (Live Web Streams)")
-    if not df_insider.empty and "Value ($)" in df_insider.columns:
-        total_insider_buys = df_insider[df_insider["Value ($)"] > 0]["Value ($)"].sum()
-        total_insider_sells = df_insider[df_insider["Value ($)"] < 0]["Value ($)"].sum()
-        m1, m2 = st.columns(2)
-        m1.metric("Total Tracked Buying Volume", f"${total_insider_buys:,.0f}")
-        m2.metric("Total Tracked Selling Volume", f"${abs(total_insider_sells):,.0f}")
-        
-        display_insider = df_insider.copy()
-        if pd.api.types.is_datetime64_any_dtype(display_insider["Filing Date"]):
-            display_insider["Filing Date"] = display_insider["Filing Date"].dt.strftime('%Y-%m-%d')
-            
-        st.dataframe(display_insider[REQUIRED_INSIDER], hide_index=True, use_container_width=True)
+with t1:
+    st.subheader("Corporate Insiders (Form 4)")
+    if not df_insider.empty:
+        st.metric("Total Insider Volume", f"${df_insider['Value ($)'].abs().sum():,.0f}")
+        st.dataframe(df_insider, hide_index=True, use_container_width=True)
     else:
-        st.info("No live insider trades matching current watchlist items or filter settings.")
+        st.info("No matching insider activity.")
 
-with tab2:
-    st.subheader("Live Capitol Hill Transactions")
+with t2:
+    st.subheader("Capitol Hill Transactions")
     if not df_poly.empty:
-        poly_purchases = df_poly[df_poly["Type"] == "🟢 Purchase"]["Numeric Max"].sum()
-        poly_sales = df_poly[df_poly["Type"] == "🔴 Sale"]["Numeric Max"].sum()
-        pm1, pm2 = st.columns(2)
-        pm1.metric("Est. Lawmaker Inflow Capacity", f"${poly_purchases:,.0f}")
-        pm2.metric("Est. Lawmaker Outflow Capacity", f"${poly_sales:,.0f}")
+        st.dataframe(df_poly[["Filing Date", "Politician", "Ticker", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
+    else:
+        st.info("No active political filings.")
+
+with t3:
+    st.subheader("Institutional Whales")
+    if not df_whale.empty:
+        st.dataframe(df_whale, hide_index=True, use_container_width=True)
+    else:
+        st.info("No active whale blocks.")
+
+with t4:
+    st.subheader("🇺🇸 High-Conviction Federal Portfolio")
+    try:
+        df_m = pd.DataFrame(data_store.get_maga_portfolio_data())
+        st.dataframe(df_m, hide_index=True, use_container_width=True)
+    except:
+        st.warning("MAGA alpha portfolio engine offline.")
+
+with t5:
+    st.subheader("Watchlist Operations")
+    new_tk = st.text_input("Add Ticker:").upper().strip()
+    if st.button("➕ Add") and new_tk and new_tk not in st.session_state.watchlist:
+        st.session_state.watchlist.append(new_tk)
+        st.rerun()
         
-        display_poly = df_poly.copy()
-        if pd.api.types.is_datetime64_any_dtype(display_poly["Filing Date"]):
-            display_poly["Filing Date"] = display_poly["Filing Date"].dt.strftime('%Y-%m-%d')
-        st.dataframe(display_poly[["Filing Date", "Politician", "Ticker", "Sector", "Type", "Amount Range"]], hide_index=True, use_container_width=True)
-    else:
-        st.info("No congressional trades filed on these tickers in the last 30 days.")
-
-with tab3:
-    st.subheader("Major Institutional Block Holdings")
-    if not df_inst.empty:
-        inst_inflow = df_inst["Value ($)"].sum()
-        st.metric("Whale Net Core Institutional Assets Covered", f"${inst_inflow:,.0f}")
-        st.dataframe(df_inst[REQUIRED_INST], hide_index=True, use_container_width=True)
-    else:
-        st.info("No active block holding profiles matching tickers.")
-
-with tab4:
-    st.subheader("🇺🇸 High-Conviction Federal Executive Tracker")
-    df_maga = df_maga_raw.copy()
-    
-    # Defensive structural tracking loop for local static portfolio structure
-    REQUIRED_MAGA = ["Ticker", "Sector", "Holding Tier", "Estimated Value", "Action", "Thesis"]
-    if df_maga.empty:
-        df_maga = pd.DataFrame(columns=REQUIRED_MAGA)
-    else:
-        if "Ticker" in df_maga.columns:
-            df_maga["Sector"] = df_maga["Ticker"].map(lambda x: data_store.SECTOR_MAP.get(x, "Other / Unclassified"))
-        for c in REQUIRED_MAGA:
-            if c not in df_maga.columns:
-                df_maga[c] = "N/A"
-                
-    mm1, mm2 = st.columns(2)
-    mm1.metric("Est. Minimum Portfolio Allocation Tier", "$220,000,000")
-    mm2.metric("Dominant Allocation Overweight", "Semiconductors / Infrastructure")
-    st.dataframe(df_maga[REQUIRED_MAGA], hide_index=True, use_container_width=True)
-
-with tab5:
-    st.subheader("📋 Personalized High-Alpha Watchlist")
-    st.caption("Add custom stock tickers here to monitor their real-time volume breakout statuses instantly.")
-    
-    col_input, col_btn = st.columns([3, 1])
-    with col_input:
-        new_ticker = st.text_input("Enter Stock Ticker to Add", placeholder="e.g. SMCI, VRT, CEG", key="add_input").upper().strip()
-    with col_btn:
-        st.write("##") 
-        if st.button("➕ Add Ticker", use_container_width=True):
-            if new_ticker and new_ticker not in st.session_state.watchlist:
-                st.session_state.watchlist.append(new_ticker)
-                sync_watchlist_to_url() 
-                st.rerun() 
-                
-    st.write("---")
-    
-    if st.session_state.watchlist:
-        for ticker in st.session_state.watchlist:
-            vol_label, vol_val, vol_color = get_volume_breakout_metric_native(ticker)
-            sector_name = data_store.SECTOR_MAP.get(ticker, "Custom Tracker Asset / Alpha Target")
-            
-            metric_col, info_col, action_col = st.columns([2, 4, 1])
-            
-            with metric_col:
-                if vol_color == "green":
-                    st.success(f"**{ticker}** • {vol_label}")
-                elif vol_color == "red":
-                    st.error(f"**{ticker}** • {vol_label}")
-                else:
-                    st.info(f"**{ticker}** • {vol_label}")
-                    
-            with info_col:
-                st.markdown(f"**Sector:** {sector_name}")
-                st.caption(f"Live API cross-reference lookups successfully running for asset.")
-                
-            with action_col:
-                st.write("") 
-                if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
-                    st.session_state.watchlist.remove(ticker)
-                    sync_watchlist_to_url() 
-                    st.rerun() 
-            st.write("---")
-    else:
-        st.info("Your watchlist is currently empty. Use the input panel above to track custom parameters.")
+    st.write("Current Items:", st.session_state.watchlist)
+    if st.button("🗑️ Clear All"):
+        st.session_state.watchlist = ["NVDA"]
+        st.rerun()
