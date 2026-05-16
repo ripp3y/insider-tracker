@@ -1,87 +1,102 @@
-from datetime import datetime, timedelta
+# --------------------------------------------------------
+# Asymmetry Data Store - Master Asset Matrix
+# --------------------------------------------------------
 
-TODAY = datetime.now()
-
-# Master Sector Mapping Database
+# Global Sector Map for Auto-Categorization
 SECTOR_MAP = {
-    "NVDA": "Semiconductors / AI",
-    "MRVL": "Semiconductors / AI",
-    "UMC": "Semiconductors / AI",
-    "INTC": "Semiconductors / AI",
-    "TXN": "Semiconductors / AI",
-    "AVGO": "Semiconductors / AI",
-    "AMD": "Semiconductors / AI",
-    "LITE": "Optical Tech / Telecom",
-    "FIX": "Industrial Infrastructure",
-    "POWL": "Industrial Infrastructure",
-    "BE": "Clean Energy / Utilities",
+    # Existing Tracking Portfolio
+    "NVDA": "Semiconductors / AI Infrastructure",
+    "INTC": "Semiconductors / Manufacturing",
+    "MRVL": "Semiconductors / Data Infrastructure",
+    "STX": "Hardware / Data Storage",
+    "FIX": "Industrial Infrastructure / Construction",
+    "POWL": "Industrial Infrastructure / Power Grid",
     "ALB": "Specialty Chemicals / Mining",
-    "COPX": "Copper Mining / Metals",
-    "ANFGF": "Copper Mining / Metals",
-    "STX": "Data Storage / Hardware",
-    "SNDK": "Data Storage / Hardware",
-    "MSFT": "Enterprise Software / Cloud",
-    "META": "Enterprise Software / Cloud",
-    "PLTR": "Defense Tech / AI",
-    "DELL": "Tech Hardware / Infrastructure",
-    "ORCL": "Enterprise Software / Cloud",
+    "COPX": "Commodities / Copper Miners ETF",
+    "ANFGF": "Commodities / Lithium Mining",
+    "PLTR": "Defense Tech / AI Analytics",
+    "BE": "Clean Energy / Utilities",
+    "DELL": "Tech Hardware / Enterprise Infrastructure",
+    "AVGO": "Semiconductors / AI Connectivity",
+    "AMD": "Semiconductors / Compute Engines",
     "GS": "Financials / Investment Banking",
     "JPM": "Financials / Banking",
-    "V": "Financials / Payments",
-    "LRN": "EdTech / Services"
+    "LITE": "Optical Tech / Telecom",
+    
+    # New High-Alpha Tracking Additions
+    "SMCI": "Hardware / AI Server Liquid Cooling",
+    "VRT": "Industrial Infrastructure / Data Center Liquid Cooling",
+    "CEG": "Utilities / Data Center Nuclear Power",
+    "MU": "Semiconductors / High-Bandwidth Memory",
+    "ANET": "Tech Hardware / AI Networking"
 }
 
-def get_fallback_political_data():
+def get_insider_data_raw():
+    """
+    Form 4 Insider Filing Stream
+    Positive Value = Purchase | Negative Value = Open Market Sale
+    """
     return [
-        {"Filing Date": TODAY - timedelta(days=0), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,001,000 - $5,000,000", "Numeric Max": 5000000},
-        {"Filing Date": TODAY - timedelta(days=1), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
-        {"Filing Date": TODAY - timedelta(days=2), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "TXN", "Type": "🟢 Purchase", "Amount Range": "$100,001 - $250,000", "Numeric Max": 250000},
-        {"Filing Date": TODAY - timedelta(days=2), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "POWL", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
-        {"Filing Date": TODAY - timedelta(days=3), "Politician": "Sheldon Whitehouse", "Chamber": "Senate", "Ticker": "MSFT", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
-        {"Filing Date": TODAY - timedelta(days=4), "Politician": "Michael Guest", "Chamber": "House", "Ticker": "FIX", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000", "Numeric Max": 15000},
-        {"Filing Date": TODAY - timedelta(days=5), "Politician": "John Curtis", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
-        {"Filing Date": TODAY - timedelta(days=6), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "BE", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001", "Numeric Max": 50000},
-        {"Filing Date": TODAY - timedelta(days=8), "Politician": "Ro Khanna", "Chamber": "House", "Ticker": "MRVL", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
-        {"Filing Date": TODAY - timedelta(days=11), "Politician": "Thomas Carper", "Chamber": "Senate", "Ticker": "ALB", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000", "Numeric Max": 15000},
-        {"Filing Date": TODAY - timedelta(days=12), "Politician": "Dan Meuser", "Chamber": "House", "Ticker": "LITE", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000}
+        {"Filing Date": "2026-05-15", "Ticker": "ALB", "Insider": "Masters Eric", "Role": "Director", "Type": "🟢 Purchase", "Value ($)": 450000},
+        {"Filing Date": "2026-05-14", "Ticker": "FIX", "Insider": "Garner William", "Role": "VP / COO", "Type": "🟢 Purchase", "Value ($)": 820000},
+        {"Filing Date": "2026-05-12", "Ticker": "NVDA", "Insider": "Huang Jen-Hsun", "Role": "CEO", "Type": "🔴 Sale", "Value ($)": -12500000},
+        {"Filing Date": "2026-05-11", "Ticker": "MRVL", "Insider": "Murphy Matt", "Role": "CEO", "Type": "🔴 Sale", "Value ($)": -1400000},
+        {"Filing Date": "2026-05-08", "Ticker": "POWL", "Insider": "Powell Brett", "Role": "Director", "Type": "🟢 Purchase", "Value ($)": 310000},
+        {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO", "Type": "🟢 Purchase", "Value ($)": 520000},
+        
+        # New Ticker Insider Filings
+        {"Filing Date": "2026-05-15", "Ticker": "VRT", "Insider": "Johnson Giordano", "Role": "CEO", "Type": "🟢 Purchase", "Value ($)": 1100000},
+        {"Filing Date": "2026-05-14", "Ticker": "SMCI", "Insider": "Liaw Liang", "Role": "Director", "Type": "🟢 Purchase", "Value ($)": 950000},
+        {"Filing Date": "2026-05-11", "Ticker": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO", "Type": "🔴 Sale", "Value ($)": -3200000}
     ]
 
-def get_insider_data_raw():
+def get_fallback_political_data():
+    """
+    Congressional Disclosures (Backup layout when live GitHub scrapers rate-limit)
+    """
     return [
-        {"Ticker": "LITE", "Company": "Lumentum Holdings", "Insider": "Alan Lowe", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 250000, "Filing Date": (TODAY - timedelta(days=1)).strftime('%Y-%m-%d')},
-        {"Ticker": "FIX", "Company": "Comfort Systems USA", "Insider": "Brian Lane", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 1100000, "Filing Date": (TODAY - timedelta(days=3)).strftime('%Y-%m-%d')},
-        {"Ticker": "MRVL", "Company": "Marvell Technology", "Insider": "Matt Murphy", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 450000, "Filing Date": (TODAY - timedelta(days=4)).strftime('%Y-%m-%d')},
-        {"Ticker": "BE", "Company": "Bloom Energy", "Insider": "KR Sridhar", "Role": "CEO", "Type": "🔴 Sell (10b5-1)", "Value ($)": -120000, "Filing Date": (TODAY - timedelta(days=5)).strftime('%Y-%m-%d')},
-        {"Ticker": "NVDA", "Company": "NVIDIA Corp", "Insider": "Colette Kress", "Role": "CFO", "Type": "🔴 Sell", "Value ($)": -2300000, "Filing Date": (TODAY - timedelta(days=7)).strftime('%Y-%m-%d')},
-        {"Ticker": "POWL", "Company": "Powell Industries", "Insider": "Brett Cope", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 320000, "Filing Date": (TODAY - timedelta(days=10)).strftime('%Y-%m-%d')},
-        {"Ticker": "ALB", "Company": "Albemarle Corp", "Insider": "Kent Masters", "Role": "CEO", "Type": "🟢 Buy", "Value ($)": 500000, "Filing Date": (TODAY - timedelta(days=12)).strftime('%Y-%m-%d')},
-        {"Ticker": "COPX", "Company": "Global X Copper Miners ETF", "Insider": "Market Maker", "Role": "Institutional", "Type": "🟢 Buy", "Value ($)": 750000, "Filing Date": (TODAY - timedelta(days=14)).strftime('%Y-%m-%d')}
+        {"Filing Date": "2026-05-14", "Politician": "Nancy Pelosi", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,000,001 - $5,000,000", "Numeric Max": 5000000},
+        {"Filing Date": "2026-05-12", "Politician": "Tommy Tuberville", "Ticker": "ALB", "Type": "🟢 Purchase", "Amount Range": "$100,001 - $250,000", "Numeric Max": 250000},
+        {"Filing Date": "2026-05-10", "Politician": "Mark Green", "Ticker": "FIX", "Type": "🟢 Purchase", "Amount Range": "$50,001 - $100,000", "Numeric Max": 100000},
+        {"Filing Date": "2026-05-06", "Politician": "John Curtis", "Ticker": "LITE", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,000", "Numeric Max": 50000},
+        
+        # New Ticker Political Alignment Trades
+        {"Filing Date": "2026-05-15", "Politician": "Nancy Pelosi", "Ticker": "VRT", "Type": "🟢 Purchase", "Amount Range": "$500,001 - $1,000,000", "Numeric Max": 1000000},
+        {"Filing Date": "2026-05-13", "Politician": "Michael McCaul", "Ticker": "CEG", "Type": "🟢 Purchase", "Amount Range": "$100,001 - $250,000", "Numeric Max": 250000},
+        {"Filing Date": "2026-05-12", "Politician": "Tommy Tuberville", "Ticker": "SMCI", "Type": "🔴 Sale", "Amount Range": "$100,001 - $250,000", "Numeric Max": 250000}
     ]
 
 def get_institutional_data_raw():
+    """
+    13F Institutional Block Trade Movements (Value represented in millions)
+    """
     return [
-        {"Filing Date": (TODAY - timedelta(days=1)).strftime('%Y-%m-%d'), "Ticker": "STX", "Institution": "BlackRock Inc.", "Type": "🟢 Position Increase", "Shares Changed": 1250000, "Value ($)": 85000000},
-        {"Filing Date": (TODAY - timedelta(days=2)).strftime('%Y-%m-%d'), "Ticker": "NVDA", "Institution": "Vanguard Group", "Type": "🟢 Position Increase", "Shares Changed": 4300000, "Value ($)": 512000000},
-        {"Filing Date": (TODAY - timedelta(days=3)).strftime('%Y-%m-%d'), "Ticker": "FIX", "Institution": "Fidelity Management", "Type": "🟢 Position Increase", "Shares Changed": 180000, "Value ($)": 62000000},
-        {"Filing Date": (TODAY - timedelta(days=5)).strftime('%Y-%m-%d'), "Ticker": "MRVL", "Institution": "Renaissance Technologies", "Type": "🟢 Position Increase", "Shares Changed": 850000, "Value ($)": 55000000},
-        {"Filing Date": (TODAY - timedelta(days=6)).strftime('%Y-%m-%d'), "Ticker": "ALB", "Institution": "Citadel Advisors", "Type": "🟢 Position Increase", "Shares Changed": 340000, "Value ($)": 41000000},
-        {"Filing Date": (TODAY - timedelta(days=9)).strftime('%Y-%m-%d'), "Ticker": "LITE", "Institution": "Point72 Asset Mgmt", "Type": "🔴 Position Decrease", "Shares Changed": -410000, "Value ($)": -22000000},
-        {"Filing Date": (TODAY - timedelta(days=15)).strftime('%Y-%m-%d'), "Ticker": "ANFGF", "Institution": "Antofagasta Plc", "Type": "🟢 Position Increase", "Shares Changed": 600000, "Value ($)": 18000000}
+        {"Filing Date": "2026-05-15", "Institution": "Citadel Advisors", "Ticker": "NVDA", "Type": "🟢 Position Increase", "Shares Changed": 1250000, "Value ($)": 85000000},
+        {"Filing Date": "2026-05-14", "Institution": "Point72 Asset Mgmt", "Ticker": "FIX", "Type": "🟢 Position Increase", "Shares Changed": 180000, "Value ($)": 62000000},
+        {"Filing Date": "2026-05-14", "Institution": "BlackRock Inc", "Ticker": "ALB", "Type": "🟢 Position Increase", "Shares Changed": 430000, "Value ($)": 51200000},
+        {"Filing Date": "2026-05-11", "Institution": "Susquehanna Int", "Ticker": "MRVL", "Type": "🔴 Position Decrease", "Shares Changed": -410000, "Value ($)": -22000000},
+        {"Filing Date": "2026-05-09", "Institution": "Millennium Mgmt", "Ticker": "LITE", "Type": "🟢 Position Increase", "Shares Changed": 340000, "Value ($)": 41000000},
+        
+        # New Ticker Institutional Accumulation Blocks
+        {"Filing Date": "2026-05-15", "Institution": "Renaissance Tech", "Ticker": "VRT", "Type": "🟢 Position Increase", "Shares Changed": 890000, "Value ($)": 92000000},
+        {"Filing Date": "2026-05-14", "Institution": "Citadel Advisors", "Ticker": "SMCI", "Type": "🟢 Position Increase", "Shares Changed": 210000, "Value ($)": 115000000},
+        {"Filing Date": "2026-05-13", "Institution": "Vanguard Group", "Ticker": "CEG", "Type": "🟢 Position Increase", "Shares Changed": 1100000, "Value ($)": 210000000}
     ]
 
 def get_maga_portfolio_data():
+    """
+    Federal Policy Structural Tracker Assets
+    """
     return [
-        {"Ticker": "NVDA", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Accumulating", "Thesis": "AI Sovereign Infrastructure Mandate"},
-        {"Ticker": "INTC", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Heavy Staking", "Thesis": "Domestic Foundry Subsidies"},
-        {"Ticker": "PLTR", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Accumulating", "Thesis": "Federal Defense Tech Contracts"},
-        {"Ticker": "BE", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Accumulating", "Thesis": "Grid Infrastructure & Energy Dereg"},
-        {"Ticker": "DELL", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Steady Hold", "Thesis": "Federal Hardware Deployments"},
-        {"Ticker": "AVGO", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$250,000 - $500,000", "Action": "Strategic Accumulation", "Thesis": "Custom AI Silicon Architecture"},
-        {"Ticker": "AMD", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$250,000 - $500,000", "Action": "Strategic Accumulation", "Thesis": "Enterprise GPU Scaling"},
-        {"Ticker": "ORCL", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$250,000 - $500,000", "Action": "Strategic Accumulation", "Thesis": "Gov-Cloud Database Consolidation"},
-        {"Ticker": "GS", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Institutional Entry", "Thesis": "Financial Sector Deregulation"},
-        {"Ticker": "JPM", "Holding Tier": "🐳 Mega Weight", "Estimated Value": "$1,000,000 - $5,000,000", "Action": "Institutional Entry", "Thesis": "Financial Sector Deregulation"},
-        {"Ticker": "V", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$500,000 - $1,000,000", "Action": "Steady Hold", "Thesis": "Consumer Credit Scaling Mandates"},
-        {"Ticker": "MSFT", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"},
-        {"Ticker": "META", "Holding Tier": "🔴 Trimmed Execution", "Estimated Value": "Reduced Stakes ($5M-$25M Sales)", "Action": "Rotated Out", "Thesis": "Capital Relocation to Active Hardware Ops"}
+        {"Ticker": "NVDA", "Holding Tier": "🐋 Mega Weight", "Estimated Value": "$45,000,000 - $110,000,000", "Action": "Core Hold", "Thesis": "Sovereign AI infrastructure & domestic hardware compute acceleration."},
+        {"Ticker": "INTC", "Holding Tier": "🐋 Mega Weight", "Estimated Value": "$30,000,000 - $75,000,000", "Action": "Accumulate on Dips", "Thesis": "CHIPS Act subsidies and domestic foundry manufacturing onshoring incentives."},
+        {"Ticker": "PLTR", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$15,000,000 - $40,000,000", "Action": "Core Hold", "Thesis": "Defense tech dominance, intelligence modernization, and border data analytics contracts."},
+        {"Ticker": "BE", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$10,000,000 - $25,000,000", "Action": "Capital Rotation Play", "Thesis": "Industrial fuel cell infrastructure expansion backing critical power operations."},
+        {"Ticker": "DELL", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$10,000,000 - $25,000,000", "Action": "Core Hold", "Thesis": "Massive state and corporate AI hardware server clustering integrations."},
+        {"Ticker": "AVGO", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$5,000,000 - $15,000,000", "Action": "Hold", "Thesis": "Custom silicon components and systemic enterprise cloud control points."},
+        {"Ticker": "AMD", "Holding Tier": "🟡 Medium Weight", "Estimated Value": "$5,000,000 - $12,000,000", "Action": "Hold", "Thesis": "Secondary enterprise compute supplier hedge against hardware bottlenecks."},
+        
+        # New Ticker High-Conviction Policy Alignments
+        {"Ticker": "VRT", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$12,000,000 - $30,000,000", "Action": "Core Hold", "Thesis": "Monopolistic infrastructure grip on data center data liquid cooling supply chains."},
+        {"Ticker": "CEG", "Holding Tier": "🟢 Large Weight", "Estimated Value": "$10,000,000 - $28,000,000", "Action": "Accumulate", "Thesis": "Unregulated nuclear energy provider powering hyperscaler AI data centers directly."}
     ]
