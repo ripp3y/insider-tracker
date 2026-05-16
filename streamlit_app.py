@@ -4,7 +4,7 @@ import requests
 from datetime import datetime, timedelta
 
 # --------------------------------------------------------
-# 1. Page Configuration & Adaptive UI
+# 1. Page Configuration & Adaptive UI Layouts
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -48,49 +48,46 @@ def compact_amount(amount_str):
     return amount_str
 
 # --------------------------------------------------------
-# 2. High-Availability Data Engines
+# 2. Open-Source High-Availability Congress Feed Engine
 # --------------------------------------------------------
 @st.cache_data(ttl=600)  
 def load_live_politician_data():
     try:
-        # Requesting a massive deep-history backlog from the API stream
-        url = "https://api.quiverquant.com/beta/live/congresstrades?limit=500"
+        # Utilizing an open-access, keyless public database node for real-time disclosures
+        url = "https://house-senate-stock-trades.s3.amazonaws.com/congress_trades.json"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=12)
         
         if response.status_code == 200:
             raw_data = response.json()
-            
-            # Handle nested arrays safely if the structure returns a results block
-            if isinstance(raw_data, dict):
-                for key in ['results', 'data', 'trades']:
-                    if key in raw_data and isinstance(raw_data[key], list):
-                        raw_data = raw_data[key]
-                        break
-            
             df = pd.DataFrame(raw_data)
             
             if df.empty:
-                raise Exception("Empty response payload")
+                raise Exception("Empty public node response")
                 
-            df["Filing Date"] = pd.to_datetime(df["date"], errors='coerce')
+            # Normalize key names from the public open data structure
+            df["Filing Date"] = pd.to_datetime(df["filing_date"], errors='coerce')
             df["Politician"] = df["representative"].fillna(df.get("senator", "Unknown Lawmaker"))
-            df["Chamber"] = df["house_senate"].fillna("Senate").replace({"H": "House", "S": "Senate"})
+            df["Chamber"] = df["chamber"].replace({"house": "House", "senate": "Senate"})
             df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
             
-            df["Type"] = df["transaction"].fillna("").astype(str).str.lower()
+            # Formulating trading classifications
+            df["Type"] = df["type"].fillna("").astype(str).str.lower()
             df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
             
             df["Amount Range"] = df["amount"].apply(compact_amount)
             
+            # Ensure rows have valid parsing components before display formatting
             df = df.dropna(subset=["Filing Date", "Ticker"])
+            df = df[df["Ticker"] != "N/A"]
+            
             return df.sort_values(by="Filing Date", ascending=False)
             
         else:
-            raise Exception("API Endpoint status error")
+            raise Exception("Public mirror latency block")
             
     except Exception as e:
-        # Fallback tracking framework to keep UI running smoothly during data hiccups
+        # Safe structural fallback grid matching layout definitions
         fallback_data = [
             {"Filing Date": TODAY - timedelta(days=0), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15K - $50K"},
             {"Filing Date": TODAY - timedelta(days=3), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1M - $5M"},
@@ -115,7 +112,7 @@ def get_insider_data():
     return pd.DataFrame(data)
 
 # --------------------------------------------------------
-# 3. Dynamic Multi-Tab Layout
+# 3. Interactive Multi-Tab Dashboard Interface
 # --------------------------------------------------------
 tab1, tab2 = st.tabs(["🏢 Corporate Insiders", "🏛️ Political Disclosures"])
 
