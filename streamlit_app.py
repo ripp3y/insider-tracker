@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
+import os
 from io import StringIO
 from datetime import datetime
 
@@ -26,11 +27,30 @@ st.caption("Tracking legal alpha by monitoring corporate executives, political d
 TODAY = datetime.now()
 
 # --------------------------------------------------------
-# 2. Watchlist Session State Initialization
+# 2. PERSISTENT STORAGE: Local Watchlist File Handlers
 # --------------------------------------------------------
+WATCHLIST_FILE = "watchlist.txt"
+
+def load_persistent_watchlist():
+    """Reads saved tickers from a local text file if it exists."""
+    if os.path.exists(WATCHLIST_FILE):
+        with open(WATCHLIST_FILE, "r") as f:
+            # Read tickers, remove whitespace, and filter out empty lines
+            tickers = [line.strip().upper() for line in f.readlines() if line.strip()]
+            if tickers:
+                return tickers
+    # Baseline hardcoded defaults if no file exists yet
+    return ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
+
+def save_persistent_watchlist(watchlist):
+    """Writes the current watchlist state out to local disk storage."""
+    with open(WATCHLIST_FILE, "w") as f:
+        for ticker in watchlist:
+            f.write(f"{ticker}\n")
+
+# Initialize stateful watchlist using our permanent storage engine
 if "watchlist" not in st.session_state:
-    # Starting baseline for tracking
-    st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
+    st.session_state.watchlist = load_persistent_watchlist()
 
 # --------------------------------------------------------
 # Live Market Volume Analytics Engine
@@ -138,9 +158,8 @@ df_inst_raw = get_institutional_data()
 df_maga_raw = pd.DataFrame(data_store.get_maga_portfolio_data())
 
 # --------------------------------------------------------
-# 4. CRITICAL FIX: Global Watchlist Lock Filter Execution
+# 4. Global Watchlist Lock Filter Execution
 # --------------------------------------------------------
-# If you have tickers in your watchlist, we restrict all datafeeds to ONLY analyze those tickers!
 if st.session_state.watchlist:
     df_insider_raw = df_insider_raw[df_insider_raw["Ticker"].isin(st.session_state.watchlist)]
     df_poly_raw = df_poly_raw[df_poly_raw["Ticker"].isin(st.session_state.watchlist)]
@@ -271,6 +290,7 @@ with tab5:
         if st.button("➕ Add Ticker", use_container_width=True):
             if new_ticker and new_ticker not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker)
+                save_persistent_watchlist(st.session_state.watchlist) # Write to disk!
                 st.rerun() 
                 
     st.write("---")
@@ -298,6 +318,7 @@ with tab5:
                 st.write("") 
                 if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
                     st.session_state.watchlist.remove(ticker)
+                    save_persistent_watchlist(st.session_state.watchlist) # Update disk file!
                     st.rerun() 
             st.write("---")
     else:
