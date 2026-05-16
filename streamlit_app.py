@@ -4,12 +4,12 @@ import requests
 import warnings
 from datetime import datetime, timedelta
 
-# Silences the framework layout deprecation logs in the background console
+# This silences the framework's layout layout/width alerts in your background console logs
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
 # --------------------------------------------------------
-# 1. Page Configuration & Adaptive UI Layouts
+# 1. Page Configuration & Setup
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -22,7 +22,6 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 
 TODAY = datetime.now()
 
-# Helper function to format any messy live amount strings
 def format_live_amount(amount_raw):
     if not amount_raw or pd.isna(amount_raw):
         return "Unknown"
@@ -30,11 +29,10 @@ def format_live_amount(amount_raw):
     return f"${val_str}" if val_str.isdigit() else str(amount_raw)
 
 # --------------------------------------------------------
-# 2. Open Public API Political Data Engine
+# 2. Live Public API Political Data Engine
 # --------------------------------------------------------
-@st.cache_data(ttl=300)  # Caches for 5 minutes so it stays lightning fast
+@st.cache_data(ttl=300)  # Caches for 5 minutes for performance
 def load_live_politician_data():
-    # Direct live API feed compiling real-time House and Senate disclosures
     live_api_url = "https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json"
     
     headers = {
@@ -51,7 +49,7 @@ def load_live_politician_data():
             if df.empty:
                 return get_fallback_political_data()
             
-            # Normalize live API columns to match your exact dashboard UI
+            # Normalize live API columns to match user interface
             df["Filing Date"] = pd.to_datetime(df.get("disclosure_date", df.get("filing_date")), errors='coerce')
             df["Politician"] = df.get("representative", df.get("lawmaker", "Unknown Lawmaker"))
             df["Chamber"] = "House"  
@@ -61,7 +59,6 @@ def load_live_politician_data():
             df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
             df["Amount Range"] = df.get("amount", "Unknown").apply(format_live_amount)
             
-            # Filter out clean, functional stock tickers
             df = df.dropna(subset=["Filing Date"])
             df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
             
@@ -78,10 +75,10 @@ def get_fallback_political_data():
         {"Filing Date": TODAY - timedelta(days=1), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1,000,001 - $5,000,000"},
         {"Filing Date": TODAY - timedelta(days=3), "Politician": "Tommy Tuberville", "Chamber": "Senate", "Ticker": "TXN", "Type": "🟢 Purchase", "Amount Range": "$100,001 - $250,000"},
         {"Filing Date": TODAY - timedelta(days=4), "Politician": "Sheldon Whitehouse", "Chamber": "Senate", "Ticker": "MSFT", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000"},
-        {"Filing Date": TODAY - timedelta(days=6), "Politician": "Michael Guest", "Chamber": "House", "Ticker": "FIX", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000"},
-        {"Filing Date": TODAY - timedelta(days=8), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "BE", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001"},
-        {"Filing Date": TODAY - timedelta(days=11), "Politician": "Ro Khanna", "Chamber": "House", "Ticker": "MRVL", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000"},
-        {"Filing Date": TODAY - timedelta(days=14), "Politician": "Thomas Carper", "Chamber": "Senate", "Ticker": "ALB", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000"}
+        {"Filing Date": TODAY - timedelta(days=5), "Politician": "Michael Guest", "Chamber": "House", "Ticker": "FIX", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000"},
+        {"Filing Date": TODAY - timedelta(days=7), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "BE", "Type": "🟢 Purchase", "Amount Range": "$15,001 - $50,001"},
+        {"Filing Date": TODAY - timedelta(days=10), "Politician": "Ro Khanna", "Chamber": "House", "Ticker": "MRVL", "Type": "🔴 Sale", "Amount Range": "$50,001 - $100,000"},
+        {"Filing Date": TODAY - timedelta(days=13), "Politician": "Thomas Carper", "Chamber": "Senate", "Ticker": "ALB", "Type": "🟢 Purchase", "Amount Range": "$1,001 - $15,000"}
     ]
     df = pd.DataFrame(fallback_trades)
     df["Filing Date"] = pd.to_datetime(df["Filing Date"])
@@ -118,7 +115,7 @@ with tab1:
     c1.metric("Tracked Exec Purchases", f"{total_buys} Companies")
     c2.metric("Total Tracked Buying Volume", f"${total_capital:,.0f}")
     
-    # Restored valid parameter to fix the TypeError completely
+    # Kept standard use_container_width=True here to prevent keyword arguments errors
     st.dataframe(df_insider, hide_index=True, use_container_width=True)
 
 # --- TAB 2: POLITICIANS ---
@@ -138,7 +135,7 @@ with tab2:
         if not df_poly.empty:
             df_poly["Filing Date"] = df_poly["Filing Date"].dt.strftime('%Y-%m-%d')
             
-            # Restored valid parameter to fix the TypeError completely
+            # Kept standard use_container_width=True here to prevent keyword arguments errors
             st.dataframe(
                 df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]].head(100), 
                 hide_index=True,
