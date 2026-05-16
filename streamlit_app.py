@@ -11,7 +11,7 @@ st.caption("Alpha Tracking Dashboard")
 
 DEFAULT_TICKERS = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-# --- URL STORAGE CONTROL ---
+# --- URL QUERY PARAM CONTROL ---
 qp = st.query_params
 if "list" in qp and qp["list"].strip():
     current_wl = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
@@ -23,14 +23,12 @@ st.session_state.watchlist = current_wl
 wl = st.session_state.watchlist
 
 
-# --- DYNAMIC DATA RETRIEVAL ENGINE ---
+# --- DATA CACHING & NORMALIZATION ENGINE ---
 @st.cache_data(ttl=300)
 def get_clean_data(watchlist_symbols):
-    # Pass the live watchlist directly down into your data_store functions
     try:
         df_i = pd.DataFrame(data_store.get_insider_data_raw(watchlist_symbols))
     except TypeError:
-        # Fallback if the data_store function doesn't accept arguments yet
         df_i = pd.DataFrame(data_store.get_insider_data_raw())
 
     try:
@@ -43,7 +41,7 @@ def get_clean_data(watchlist_symbols):
     except TypeError:
         df_w = pd.DataFrame(data_store.get_institutional_data_raw())
 
-    # Standardize 'Ticker' columns safely
+    # Standardize 'Ticker' columns safely across all files
     for df in [df_i, df_p, df_w]:
         if df is not None and not df.empty:
             t_col = next((c for c in df.columns if str(c).lower() in ["ticker", "symbol"]), None)
@@ -53,16 +51,21 @@ def get_clean_data(watchlist_symbols):
 
     return df_i, df_p, df_w
 
-# Run data fetch with the active watchlist
+# Extract raw structured matrices
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
-# Final filter slice
-df_insider = raw_insider[raw_insider["Ticker"].isin(wl)] if not raw_insider.empty else raw_insider
-df_poly = raw_poly[raw_poly["Ticker"].isin(wl)] if not raw_poly.empty else raw_poly
-df_whale = raw_whale[raw_whale["Ticker"].isin(wl)] if not raw_whale.empty else raw_whale
+# Filter dataframes to match current active watchlist view
+df_insider = raw_insider[raw_insider["Ticker"].isin(wl)].copy() if not raw_insider.empty else raw_insider
+df_poly = raw_poly[raw_poly["Ticker"].isin(wl)].copy() if not raw_poly.empty else raw_poly
+df_whale = raw_whale[raw_whale["Ticker"].isin(wl)].copy() if not raw_whale.empty else raw_whale
+
+# Inject Sector Map descriptions from data_store matrix
+for df in [df_insider, df_poly, df_whale]:
+    if df is not None and not df.empty and "Ticker" in df.columns:
+        df["Sector"] = df["Ticker"].apply(data_store.get_sector)
 
 
-# --- SIDEBAR ---
+# --- CORE CONTROL SIDEBAR ---
 st.sidebar.header("🐋 Core Filters")
 min_insider = st.sidebar.slider("Min Insider Value ($)", 0, 1500000, 0, 50000)
 
@@ -70,13 +73,20 @@ if not df_insider.empty and "Value ($)" in df_insider.columns:
     df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider]
 
 
-# --- TABS UI ---
+# --- TABS WORKSPACE UI ---
 t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
 with t1:
     st.subheader("Corporate Insiders")
     if not df_insider.empty:
-        st.dataframe(df_insider, hide_index=True, use_container_width=True)
+        st.dataframe(
+            df_insider, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                "Value ($)": st.column_config.NumberColumn("Value ($)", format="$%,d")
+            }
+        )
     else:
         st.info("No active insider entries matching watchlist.")
 
@@ -90,7 +100,15 @@ with t2:
 with t3:
     st.subheader("Whale Blocks")
     if not df_whale.empty:
-        st.dataframe(df_whale, hide_index=True, use_container_width=True)
+        st.dataframe(
+            df_whale, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                "Shares Changed": st.column_config.NumberColumn("Shares Changed", format="%,d"),
+                "Value ($)": st.column_config.NumberColumn("Value ($)", format="$%,d")
+            }
+        )
     else:
         st.info("No active block data matching watchlist.")
 
