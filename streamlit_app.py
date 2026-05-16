@@ -329,19 +329,4 @@ else:
 # --------------------------------------------------------
 # 7. TRIPLE CONVICTION BREAKOUT COMPONENT CONTROL
 # --------------------------------------------------------
-if not df_insider_raw.empty and not df_poly_raw.empty and not df_inst_raw.empty:
-    insider_tickers = set(df_insider_raw["Ticker"].unique()) if "Ticker" in df_insider_raw.columns else set()
-    poly_tickers = set(df_poly_raw["Ticker"].unique()) if "Ticker" in df_poly_raw.columns else set()
-    inst_tickers = set(df_inst_raw["Ticker"].unique()) if "Ticker" in df_inst_raw.columns else set()
-    triple_conviction = insider_tickers.intersection(poly_tickers).intersection(inst_tickers)
-else:
-    triple_conviction = set()
 
-if triple_conviction:
-    st.error("⚡ **Asymmetry Alert: Triple Conviction Breakout Matrix**")
-    cols = st.columns(len(triple_conviction))
-    for idx, ticker in enumerate(triple_conviction):
-        with cols[idx]:
-            c_actions = df_insider_raw[df_insider_raw["Ticker"] == ticker] if "Ticker" in df_insider_raw.columns else []
-            p_actions = df_poly_raw[df_poly_raw["Ticker"] == ticker] if "Ticker" in df_poly_raw.columns else []
-            i_actions = df_inst_raw[df_inst_raw["Ticker"] == ticker] if "Ticker" in df
