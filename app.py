@@ -53,7 +53,7 @@ def compact_amount(amount_str):
 @st.cache_data(ttl=600)  
 def load_live_politician_data():
     try:
-        # Utilizing an open-access, keyless public database node for real-time disclosures
+        # Utilizing an open-access public data pipeline
         url = "https://house-senate-stock-trades.s3.amazonaws.com/congress_trades.json"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=12)
@@ -65,7 +65,7 @@ def load_live_politician_data():
             if df.empty:
                 raise Exception("Empty public node response")
                 
-            # Normalize key names from the public open data structure
+            # Normalize key names from the public data structure
             df["Filing Date"] = pd.to_datetime(df["filing_date"], errors='coerce')
             df["Politician"] = df["representative"].fillna(df.get("senator", "Unknown Lawmaker"))
             df["Chamber"] = df["chamber"].replace({"house": "House", "senate": "Senate"})
@@ -77,7 +77,6 @@ def load_live_politician_data():
             
             df["Amount Range"] = df["amount"].apply(compact_amount)
             
-            # Ensure rows have valid parsing components before display formatting
             df = df.dropna(subset=["Filing Date", "Ticker"])
             df = df[df["Ticker"] != "N/A"]
             
@@ -87,7 +86,7 @@ def load_live_politician_data():
             raise Exception("Public mirror latency block")
             
     except Exception as e:
-        # Safe structural fallback grid matching layout definitions
+        # Hard coded fallback grid to keep UI up if server fails
         fallback_data = [
             {"Filing Date": TODAY - timedelta(days=0), "Politician": "Markwayne Mullin", "Chamber": "Senate", "Ticker": "LRN", "Type": "🟢 Purchase", "Amount Range": "$15K - $50K"},
             {"Filing Date": TODAY - timedelta(days=3), "Politician": "Nancy Pelosi", "Chamber": "House", "Ticker": "NVDA", "Type": "🟢 Purchase", "Amount Range": "$1M - $5M"},
