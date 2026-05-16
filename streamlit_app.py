@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import warnings
-import os
 from io import StringIO
 from datetime import datetime
 
@@ -27,30 +26,28 @@ st.caption("Tracking legal alpha by monitoring corporate executives, political d
 TODAY = datetime.now()
 
 # --------------------------------------------------------
-# 2. PERSISTENT STORAGE: Local Watchlist File Handlers
+# 2. PERSISTENT STORAGE: Browser URL Query Parameter Sync
 # --------------------------------------------------------
-WATCHLIST_FILE = "watchlist.txt"
+# Read current URL parameters to check if there is an active watchlist saved in the link
+query_params = st.query_params
 
-def load_persistent_watchlist():
-    """Reads saved tickers from a local text file if it exists."""
-    if os.path.exists(WATCHLIST_FILE):
-        with open(WATCHLIST_FILE, "r") as f:
-            # Read tickers, remove whitespace, and filter out empty lines
-            tickers = [line.strip().upper() for line in f.readlines() if line.strip()]
-            if tickers:
-                return tickers
-    # Baseline hardcoded defaults if no file exists yet
-    return ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
-
-def save_persistent_watchlist(watchlist):
-    """Writes the current watchlist state out to local disk storage."""
-    with open(WATCHLIST_FILE, "w") as f:
-        for ticker in watchlist:
-            f.write(f"{ticker}\n")
-
-# Initialize stateful watchlist using our permanent storage engine
 if "watchlist" not in st.session_state:
-    st.session_state.watchlist = load_persistent_watchlist()
+    if "list" in query_params:
+        # Rebuild list from URL string: "NVDA,VRT,SMCI" -> ["NVDA", "VRT", "SMCI"]
+        st.session_state.watchlist = [t.strip().upper() for t in query_params["list"].split(",") if t.strip()]
+    else:
+        # Absolute structural baseline defaults if the URL string is pristine
+        st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
+
+def sync_watchlist_to_url():
+    """Updates the browser address bar parameters instantly so edits survive reboots."""
+    if st.session_state.watchlist:
+        st.query_params["list"] = ",".join(st.session_state.watchlist)
+    else:
+        st.query_params.clear()
+
+# Make sure the address bar matches the current state immediately on load
+sync_watchlist_to_url()
 
 # --------------------------------------------------------
 # Live Market Volume Analytics Engine
@@ -290,7 +287,7 @@ with tab5:
         if st.button("➕ Add Ticker", use_container_width=True):
             if new_ticker and new_ticker not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker)
-                save_persistent_watchlist(st.session_state.watchlist) # Write to disk!
+                sync_watchlist_to_url() # Sync to address bar immediately
                 st.rerun() 
                 
     st.write("---")
@@ -318,7 +315,7 @@ with tab5:
                 st.write("") 
                 if st.button(f"➖ Remove", key=f"del_{ticker}", use_container_width=True):
                     st.session_state.watchlist.remove(ticker)
-                    save_persistent_watchlist(st.session_state.watchlist) # Update disk file!
+                    sync_watchlist_to_url() # Sync to address bar immediately
                     st.rerun() 
             st.write("---")
     else:
