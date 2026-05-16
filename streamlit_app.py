@@ -4,12 +4,11 @@ import requests
 import warnings
 from datetime import datetime, timedelta
 
-# This silences the framework's layout layout/width alerts in your background console logs
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
 # --------------------------------------------------------
-# 1. Page Configuration & Setup
+# 1. Page Configuration & Layout
 # --------------------------------------------------------
 st.set_page_config(
     page_title="Asymmetry - Smart Money Tracker",
@@ -22,43 +21,38 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 
 TODAY = datetime.now()
 
-def format_live_amount(amount_raw):
-    if not amount_raw or pd.isna(amount_raw):
-        return "Unknown"
-    val_str = str(amount_raw).replace("$", "").replace(",", "").strip()
-    return f"${val_str}" if val_str.isdigit() else str(amount_raw)
-
 # --------------------------------------------------------
-# 2. Live Public API Political Data Engine
+# 2. High-Availability Streaming Politician Data Engine
 # --------------------------------------------------------
-@st.cache_data(ttl=300)  # Caches for 5 minutes for performance
+@st.cache_data(ttl=300)
 def load_live_politician_data():
-    live_api_url = "https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json"
+    # Ultra-lightweight pre-filtered community CSV stream (Bypasses S3 memory time-outs)
+    live_csv_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.csv"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
     try:
-        response = requests.get(live_api_url, headers=headers, timeout=10)
+        # Pull down the flat-file database directly via network stream strings
+        response = requests.get(live_csv_url, headers=headers, timeout=8)
         
-        if response.status_code == 200:
-            raw_data = response.json()
-            df = pd.DataFrame(raw_data)
+        if response.status_code == 200 and len(response.text) > 100:
+            # Stream the text lines straight into the dataframe engine
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
             
-            if df.empty:
-                return get_fallback_political_data()
+            # Dynamically map the columns coming in from the streaming data cluster
+            df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
+            df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
+            df["Chamber"] = "House"
+            df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
             
-            # Normalize live API columns to match user interface
-            df["Filing Date"] = pd.to_datetime(df.get("disclosure_date", df.get("filing_date")), errors='coerce')
-            df["Politician"] = df.get("representative", df.get("lawmaker", "Unknown Lawmaker"))
-            df["Chamber"] = "House"  
-            df["Ticker"] = df.get("ticker", "N/A").astype(str).str.upper().str.strip()
-            
-            df["Type"] = df.get("type", "").astype(str).str.lower()
+            df["Type"] = df["type"].fillna("").astype(str).str.lower()
             df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
-            df["Amount Range"] = df.get("amount", "Unknown").apply(format_live_amount)
+            df["Amount Range"] = df["amount"].fillna("Unknown").astype(str)
             
+            # Clean indexing bounds
             df = df.dropna(subset=["Filing Date"])
             df = df[(df["Ticker"] != "N/A") & (df["Ticker"] != "--") & (df["Ticker"].str.len() <= 5)]
             
@@ -67,6 +61,7 @@ def load_live_politician_data():
             return get_fallback_political_data()
             
     except Exception as e:
+        # Failover seamlessly if the remote server takes a hit
         return get_fallback_political_data()
 
 def get_fallback_political_data():
@@ -115,7 +110,6 @@ with tab1:
     c1.metric("Tracked Exec Purchases", f"{total_buys} Companies")
     c2.metric("Total Tracked Buying Volume", f"${total_capital:,.0f}")
     
-    # Kept standard use_container_width=True here to prevent keyword arguments errors
     st.dataframe(df_insider, hide_index=True, use_container_width=True)
 
 # --- TAB 2: POLITICIANS ---
@@ -135,7 +129,6 @@ with tab2:
         if not df_poly.empty:
             df_poly["Filing Date"] = df_poly["Filing Date"].dt.strftime('%Y-%m-%d')
             
-            # Kept standard use_container_width=True here to prevent keyword arguments errors
             st.dataframe(
                 df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]].head(100), 
                 hide_index=True,
