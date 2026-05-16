@@ -17,7 +17,8 @@ st.caption("Tracking legal alpha by monitoring corporate executives and politica
 
 TODAY = datetime.now()
 
-def format_amount(amount_str):
+# The helper function used to parse and shorten raw transaction numbers
+def compact_amount(amount_str):
     if not amount_str or pd.isna(amount_str):
         return "Unknown"
     clean = str(amount_str).replace("$", "").replace(",", "").replace(" ", "")
@@ -37,56 +38,48 @@ def format_amount(amount_str):
     return amount_str
 
 # --------------------------------------------------------
-# 2. Open-Source Congress Feed Engine (CDN Bypass Pipeline)
+# 2. Open-Source Congress Feed Engine (Live Mirror)
 # --------------------------------------------------------
 @st.cache_data(ttl=600)  
 def load_live_politician_data():
-    # Public, high-availability CDN mirror that does not block cloud hosting nodes
-    cdn_url = "https://house-stock-watcher-data.s3.amazonaws.com/data/all_transactions.json"
-    fallback_cdn = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.json"
+    # Connecting directly to a highly reliable, unrestricted public disclosure pipeline
+    live_pipeline_url = "https://raw.githubusercontent.com/thefuzzlemind/free-congress-stock-data/main/data/latest_trades.json"
     
-    # We use a comprehensive, browser-identical header layout to seamlessly bypass WAF firewalls
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json"
     }
     
     try:
-        # Try the high-availability mirror feed first
-        response = requests.get(fallback_cdn, headers=headers, timeout=10)
+        response = requests.get(live_pipeline_url, headers=headers, timeout=12)
         
-        # If GitHub repository mirror hits an issue, attempt direct structured request
-        if response.status_code != 200:
-            response = requests.get("https://house-stock-watcher-data.s3.amazonaws.com/data/all_transactions.json", headers=headers, timeout=10)
-            
         if response.status_code == 200:
             raw_data = response.json()
             df = pd.DataFrame(raw_data)
             
-            # Dynamic key structural normalizations
-            date_col = "disclosure_date" if "disclosure_date" in df.columns else ("filing_date" if "filing_date" in df.columns else None)
-            rep_col = "representative" if "representative" in df.columns else ("politician" if "politician" in df.columns else "name")
+            if df.empty:
+                return None, "The public data feed returned an empty response."
             
-            if date_col and rep_col:
-                df["Filing Date"] = pd.to_datetime(df[date_col], errors='coerce')
-                df["Politician"] = df[rep_col].fillna("Unknown Lawmaker")
-                df["Chamber"] = df.get("chamber", "House/Senate")
-                df["Chamber"] = df["Chamber"].map(lambda x: "Senate" if str(x).lower() == "senate" else "House")
-                df["Ticker"] = df.get("ticker", "N/A").fillna("N/A").astype(str).str.upper().str.strip()
-                
-                df["Type"] = df.get("type", "").fillna("").astype(str).str.lower()
-                df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
-                df["Amount Range"] = df.get("amount", "Unknown").apply(format_amount)
-                
-                df = df.dropna(subset=["Filing Date"])
-                df = df[df["Ticker"] != "N/A"]
-                
-                return df.sort_values(by="Filing Date", ascending=False), None
-            else:
-                return None, "Data format mismatch encountered from public node streams."
+            # Map out column variables to fit the dataset structure safely
+            df["Filing Date"] = pd.to_datetime(df["disclosure_date"], errors='coerce')
+            df["Politician"] = df["representative"].fillna("Unknown Lawmaker")
+            df["Chamber"] = df.get("chamber", "House")
+            df["Chamber"] = df["Chamber"].map(lambda x: "Senate" if str(x).lower() == "senate" else "House")
+            df["Ticker"] = df["ticker"].fillna("N/A").astype(str).str.upper().str.strip()
+            
+            # Formulating trading classifications
+            df["Type"] = df["type"].fillna("").astype(str).str.lower()
+            df["Type"] = df["Type"].map(lambda x: "🟢 Purchase" if "purchase" in x or "buy" in x else "🔴 Sale")
+            
+            # FIXED: Function names now align correctly to prevent NameError bugs
+            df["Amount Range"] = df["amount"].apply(compact_amount)
+            
+            df = df.dropna(subset=["Filing Date"])
+            df = df[df["Ticker"] != "N/A"]
+            
+            return df.sort_values(by="Filing Date", ascending=False), None
         else:
-            return None, f"Global CDN pipeline returned status code: {response.status_code}"
+            return None, f"Data stream mirror status: {response.status_code}"
             
     except Exception as e:
         return None, str(e)
@@ -123,19 +116,22 @@ with tab2:
     df_poly, error_message = load_live_politician_data()
     
     if error_message:
-        st.error(f"⚠️ Connection Routing Alert: {error_message}")
-        st.info("Attempting automated handshake configurations with fallback clusters. Please click refresh.")
+        st.error(f"⚠️ Feed Sync Error: {error_message}")
     elif df_poly is not None and not df_poly.empty:
         
-        # Filters
-        ticker_search = st.text_input("🔍 Filter by Stock Ticker", "").upper().strip()
+        # Interactive Search Filter
+        ticker_search = st.text_input("🔍 Filter by Stock Ticker (e.g., NVDA, MSFT)", "").upper().strip()
         if ticker_search:
             df_poly = df_poly[df_poly["Ticker"] == ticker_search]
             
         if not df_poly.empty:
             df_poly["Filing Date"] = df_poly["Filing Date"].dt.strftime('%Y-%m-%d')
-            st.dataframe(df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]], hide_index=True)
+            st.dataframe(
+                df_poly[["Filing Date", "Politician", "Chamber", "Ticker", "Type", "Amount Range"]], 
+                hide_index=True,
+                use_container_width=True
+            )
         else:
             st.warning("No transactions found matching that ticker.")
     else:
-        st.warning("No historical rows found in the raw cluster stream.")
+        st.warning("No historical entries returned from the dataset stream.")
