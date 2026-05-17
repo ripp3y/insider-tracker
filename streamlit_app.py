@@ -218,7 +218,7 @@ with t2:
 
 with t3:
     st.subheader("🐋 Institutional Whale Blocks")
-    st.caption("Tracking 13F Quarterlies, Active 13D Block Accumulations, and Passive 13G Statements")
+    st.caption("Live Pipeline Engine Tracking 13F Positions, Active 13D Accumulations, and Passive 13G Statements")
     
     if not df_whale.empty:
         col_w1, col_w2 = st.columns(2)
@@ -257,11 +257,27 @@ with t3:
         st.info("No active whale entries matching your current watchlist tickers.")
 
 with t4:
-    st.subheader("Federal Portfolio Strategy")
+    st.subheader("🦅 Federal Portfolio Strategy (MAGA Index)")
+    st.caption("Strategic Legislative Weightings, Policy Mandates, and Domestic Onshoring Vectors")
     try:
-        st.dataframe(pd.DataFrame(data_store.get_maga_portfolio_data()), hide_index=True, use_container_width=True)
+        maga_raw = data_store.get_maga_portfolio_data()
+        df_maga = pd.DataFrame(maga_raw)
+        
+        # Cross-reference with the active watchlist symbols to keep focus razor sharp
+        df_maga_filtered = df_maga[df_maga["Ticker"].isin(wl)].copy()
+        
+        if not df_maga_filtered.empty:
+            # Map sectors seamlessly into layout
+            df_maga_filtered["Sector"] = df_maga_filtered["Ticker"].apply(data_store.get_sector)
+            st.dataframe(
+                df_maga_filtered[["Ticker", "Sector", "Holding Sizing", "Policy Catalyst"]], 
+                hide_index=True, 
+                use_container_width=True
+            )
+        else:
+            st.info("Add strategic policy-driven symbols (NVDA, INTC, FIX, POWL, ALB, LITE) in the Watchlist tab to monitor index allocations.")
     except:
-        st.error("Static data feed offline.")
+        st.error("Static index matrix offline.")
 
 with t5:
     st.subheader("Watchlist Manager")
