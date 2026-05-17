@@ -51,10 +51,63 @@ def get_clean_data(watchlist_symbols):
 
     return df_i, df_p, df_w
 
-# Extract raw structured matrices
+# Extract raw structured matrices (Unfiltered global sets)
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
-# Filter dataframes to match current active watchlist view
+
+# --- TRIPLE CONVICTION ALERT MATRIX OVERVIEW (GLOBAL LOOKUP) ---
+st.markdown("### 🔥 Triple Conviction Matrix")
+
+# Pull overlapping data from the raw, global datasets before filtering down
+insider_set = set(raw_insider["Ticker"].unique()) if not raw_insider.empty else set()
+poly_set = set(raw_poly["Ticker"].unique()) if not raw_poly.empty else set()
+whale_set = set(raw_whale["Ticker"].unique()) if not raw_whale.empty else set()
+
+matrix_rows = []
+
+for ticker in wl:
+    has_insider = ticker in insider_set
+    has_poly = ticker in poly_set
+    has_whale = ticker in whale_set
+    
+    score = sum([has_insider, has_poly, has_whale])
+    
+    if score > 0:
+        if score == 3:
+            tier = "🚨 Tier 3: TRIPLE"
+        elif score == 2:
+            tier = "📈 Tier 2: Double"
+        else:
+            tier = "🔍 Tier 1: Single"
+            
+        matrix_rows.append({
+            "Ticker": ticker,
+            "Conviction Level": tier,
+            "Insider Stream": "✅ Active" if has_insider else "❌ No",
+            "Political Stream": "✅ Active" if has_poly else "❌ No",
+            "Whale Stream": "✅ Active" if has_whale else "❌ No",
+            "Score": score
+        })
+
+if matrix_rows:
+    df_matrix = pd.DataFrame(matrix_rows).sort_values(by="Score", ascending=False)
+    
+    has_tier3 = any(df_matrix["Score"] == 3)
+    if has_tier3:
+        st.error("⚠️ CRITICAL ALIGNMENT DETECTED: Review Tier 3 Watchlist Targets Below")
+        
+    st.dataframe(
+        df_matrix.drop(columns=["Score"]),
+        hide_index=True,
+        use_container_width=True
+    )
+else:
+    st.info("No cross-stream activity intersections found on your active watchlist.")
+
+st.markdown("---")
+
+
+# --- LOCAL WATCHLIST FILTERS FOR INDIVIDUAL TABS ---
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)].copy() if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)].copy() if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)].copy() if not raw_whale.empty else raw_whale
