@@ -1,3 +1,4 @@
+# streamlit_app.py
 import streamlit as st
 import pandas as pd
 import warnings
@@ -25,25 +26,13 @@ st.session_state.watchlist = current_wl
 wl = st.session_state.watchlist
 
 
-# --- DATA CACHING & NORMALIZATION ENGINE ---
+# --- DATA CACHING ENGINE ---
 @st.cache_data(ttl=300)
 def get_clean_data(watchlist_symbols):
-    try:
-        df_i = pd.DataFrame(data_store.get_insider_data_raw(watchlist_symbols))
-    except TypeError:
-        df_i = pd.DataFrame(data_store.get_insider_data_raw())
+    df_i = pd.DataFrame(data_store.get_insider_data_raw(watchlist_symbols))
+    df_p = pd.DataFrame(data_store.get_fallback_political_data(watchlist_symbols))
+    df_w = pd.DataFrame(data_store.get_institutional_data_raw(watchlist_symbols))
 
-    try:
-        df_p = pd.DataFrame(data_store.get_fallback_political_data(watchlist_symbols))
-    except TypeError:
-        df_p = pd.DataFrame(data_store.get_fallback_political_data())
-
-    try:
-        df_w = pd.DataFrame(data_store.get_institutional_data_raw(watchlist_symbols))
-    except TypeError:
-        df_w = pd.DataFrame(data_store.get_institutional_data_raw())
-
-    # Protect column transformations
     for df in [df_i, df_p, df_w]:
         if df is not None and not df.empty:
             t_col = next((c for c in df.columns if str(c).lower() in ["ticker", "symbol"]), None)
@@ -54,7 +43,7 @@ def get_clean_data(watchlist_symbols):
     return df_i, df_p, df_w
 
 
-# --- NATIVE VOLUME BREAKOUT PARSER ENGINE ---
+# --- NATIVE YAHOO FINANCE HISTORICAL VOLUME ENGINE ---
 @st.cache_data(ttl=900)
 def calculate_native_volume_breakouts(watchlist_tickers):
     volume_data = []
@@ -96,7 +85,7 @@ def calculate_native_volume_breakouts(watchlist_tickers):
     return pd.DataFrame(volume_data)
 
 
-# Populate background tracking matrices
+# Populate background matrices
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
 
@@ -160,7 +149,6 @@ else:
 
 st.markdown("---")
 
-# Segment targets out to workspaces
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)].copy() if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)].copy() if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)].copy() if not raw_whale.empty else raw_whale
@@ -202,8 +190,6 @@ with t2:
 
 with t3:
     st.subheader("🐋 Institutional Whale Blocks")
-    st.caption("Live Pipeline Engine Tracking 13F Positions, Active 13D Accumulations, and Passive 13G Statements")
-    
     if not df_whale.empty:
         col_w1, col_w2 = st.columns(2)
         with col_w1:
@@ -231,9 +217,6 @@ with t3:
 
 with t4:
     st.subheader("🦅 Federal Portfolio Strategy (MAGA Index)")
-    st.caption("Live Legislative Weightings, Policy Mandates, and Strategic Domestic Onshoring Catalysts")
-    
-    # Safely extract data matrix from modified background pipeline engine
     maga_raw = data_store.get_live_maga_strategy_data(wl)
     df_maga = pd.DataFrame(maga_raw)
     
@@ -245,7 +228,7 @@ with t4:
             use_container_width=True
         )
     else:
-        st.info("Track strategic policy-driven assets (NVDA, INTC, FIX, POWL, ALB, LITE) in the Watchlist tab to map federal spending trends.")
+        st.info("Track strategic policy-driven assets in the Watchlist tab to map trends.")
 
 with t5:
     st.subheader("Watchlist Manager")
