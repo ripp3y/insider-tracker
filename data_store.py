@@ -75,7 +75,6 @@ def get_institutional_data_raw(watchlist_symbols=None):
 
 
 def get_live_maga_strategy_data(watchlist_symbols=None):
-    # Core strategy matrix initialized first to serve as a solid backup layout
     master_strategy = [
         {"Ticker": "NVDA", "Holding Sizing": "Top 5 Overweight", "Policy Catalyst": "Sovereign AI Infrastructure Mandates & Tech Tariffs"},
         {"Ticker": "INTC", "Holding Sizing": "Core Long", "Policy Catalyst": "CHIPS Act Capital Allocations & Domestic Foundry Incentives"},
@@ -92,20 +91,19 @@ def get_live_maga_strategy_data(watchlist_symbols=None):
         with urlopen(req, timeout=3) as response:
             res_data = json.loads(response.read().decode())
             
-        for agency in res_data.get("results", [])[:10]:
+        for agency in res_data.get("results", []):
             name = agency.get("name", "").lower()
             if "defense" in name:
                 live_maga_index.append({"Ticker": "LITE", "Holding Sizing": "Defense Component", "Policy Catalyst": "Live DoD Strategic Optical Contracts & Laser Supply Chains"})
             elif "energy" in name:
                 live_maga_index.append({"Ticker": "FIX", "Holding Sizing": "Industrial Weight", "Policy Catalyst": "Live DoE Power Infrastructure, Nuclear SMR, & Grid Onshoring"})
                 
-        # Inject live network modifications directly into the baseline strategy list
         for live_item in live_maga_index:
             for item in master_strategy:
                 if item["Ticker"] == live_item["Ticker"]:
                     item["Policy Catalyst"] = live_item["Policy Catalyst"]
     except:
-        pass  # Network timeout drops directly into returning the fully formed master_strategy list
+        pass
 
     if watchlist_symbols:
         return [row for row in master_strategy if row["Ticker"] in watchlist_symbols]
