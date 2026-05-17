@@ -43,7 +43,7 @@ def get_clean_data(watchlist_symbols):
     except TypeError:
         df_w = pd.DataFrame(data_store.get_institutional_data_raw())
 
-    # Standardize Ticker references across dataframes safely
+    # Protect column transformations
     for df in [df_i, df_p, df_w]:
         if df is not None and not df.empty:
             t_col = next((c for c in df.columns if str(c).lower() in ["ticker", "symbol"]), None)
@@ -96,7 +96,7 @@ def calculate_native_volume_breakouts(watchlist_tickers):
     return pd.DataFrame(volume_data)
 
 
-# Load background datasets
+# Populate background tracking matrices
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
 
@@ -141,7 +141,7 @@ else:
 
 
 # --- LIVE RELATIVE VOLUME METRICS BOARD ---
-st.markdown("### 📊 Relative Volume Momentum ($Volume > 20\\text{-day MA}$)")
+st.markdown("### 📊 Relative Volume Momentum (Volume > 20-day MA)")
 df_volume = calculate_native_volume_breakouts(wl)
 
 if not df_volume.empty:
@@ -160,7 +160,7 @@ else:
 
 st.markdown("---")
 
-# Sort target watchlist data
+# Segment targets out to workspaces
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)].copy() if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)].copy() if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)].copy() if not raw_whale.empty else raw_whale
@@ -232,22 +232,20 @@ with t3:
 with t4:
     st.subheader("🦅 Federal Portfolio Strategy (MAGA Index)")
     st.caption("Live Legislative Weightings, Policy Mandates, and Strategic Domestic Onshoring Catalysts")
-    try:
-        # Request live tracking pipeline metrics from backend engine
-        maga_raw = data_store.get_live_maga_strategy_data(wl)
-        df_maga = pd.DataFrame(maga_raw)
-        
-        if not df_maga.empty:
-            df_maga["Sector"] = df_maga["Ticker"].apply(data_store.get_sector)
-            st.dataframe(
-                df_maga[["Ticker", "Sector", "Holding Sizing", "Policy Catalyst"]], 
-                hide_index=True, 
-                use_container_width=True
-            )
-        else:
-            st.info("Track strategic policy-driven assets (NVDA, INTC, FIX, POWL, ALB, LITE) in the Watchlist tab to map federal spending trends.")
-    except:
-        st.error("Live policy-tracking interface currently offline.")
+    
+    # Safely extract data matrix from modified background pipeline engine
+    maga_raw = data_store.get_live_maga_strategy_data(wl)
+    df_maga = pd.DataFrame(maga_raw)
+    
+    if not df_maga.empty:
+        df_maga["Sector"] = df_maga["Ticker"].apply(data_store.get_sector)
+        st.dataframe(
+            df_maga[["Ticker", "Sector", "Holding Sizing", "Policy Catalyst"]], 
+            hide_index=True, 
+            use_container_width=True
+        )
+    else:
+        st.info("Track strategic policy-driven assets (NVDA, INTC, FIX, POWL, ALB, LITE) in the Watchlist tab to map federal spending trends.")
 
 with t5:
     st.subheader("Watchlist Manager")
