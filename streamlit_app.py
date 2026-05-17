@@ -43,7 +43,7 @@ def get_clean_data(watchlist_symbols):
     except TypeError:
         df_w = pd.DataFrame(data_store.get_institutional_data_raw())
 
-    # Standardize Ticker references cleanly across all loaded dataframes
+    # Standardize Ticker references across dataframes safely
     for df in [df_i, df_p, df_w]:
         if df is not None and not df.empty:
             t_col = next((c for c in df.columns if str(c).lower() in ["ticker", "symbol"]), None)
@@ -54,16 +54,14 @@ def get_clean_data(watchlist_symbols):
     return df_i, df_p, df_w
 
 
-# --- ZERO-DEPENDENCY NATIVE VOLUME PARSER ENGINE ---
-@st.cache_data(ttl=900)  # 15-minute data pipeline cache protective wall
+# --- NATIVE VOLUME BREAKOUT PARSER ENGINE ---
+@st.cache_data(ttl=900)
 def calculate_native_volume_breakouts(watchlist_tickers):
     volume_data = []
-    
     for ticker in watchlist_tickers:
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=1mo&interval=1d"
             req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            
             with urlopen(req) as response:
                 data = json.loads(response.read().decode())
                 
@@ -76,7 +74,6 @@ def calculate_native_volume_breakouts(watchlist_tickers):
                 current_price = float(closes[-1])
                 prev_price = float(closes[-2])
                 
-                # Smoothed 20-day historical trading volume calculation
                 historic_volumes = volumes[-21:-1]
                 avg_vol_20d = sum(historic_volumes) / len(historic_volumes) if historic_volumes else 0
                 
@@ -96,11 +93,10 @@ def calculate_native_volume_breakouts(watchlist_tickers):
                     })
         except:
             continue
-            
     return pd.DataFrame(volume_data)
 
 
-# Populate working runtime matrices
+# Load background datasets
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
 
@@ -112,12 +108,10 @@ poly_set = set(raw_poly["Ticker"].unique()) if not raw_poly.empty else set()
 whale_set = set(raw_whale["Ticker"].unique()) if not raw_whale.empty else set()
 
 matrix_rows = []
-
 for ticker in wl:
     has_insider = ticker in insider_set
     has_poly = ticker in poly_set
     has_whale = ticker in whale_set
-    
     score = sum([has_insider, has_poly, has_whale])
     
     if score > 0:
@@ -139,15 +133,9 @@ for ticker in wl:
 
 if matrix_rows:
     df_matrix = pd.DataFrame(matrix_rows).sort_values(by="Score", ascending=False)
-    
     if any(df_matrix["Score"] == 3):
         st.error("⚠️ CRITICAL ALIGNMENT DETECTED: Review Tier 3 Watchlist Targets Below")
-        
-    st.dataframe(
-        df_matrix.drop(columns=["Score"]),
-        hide_index=True,
-        use_container_width=True
-    )
+    st.dataframe(df_matrix.drop(columns=["Score"]), hide_index=True, use_container_width=True)
 else:
     st.info("No cross-stream activity intersections found on your active watchlist.")
 
@@ -172,13 +160,11 @@ else:
 
 st.markdown("---")
 
-
-# --- LOCAL WATCHLIST FILTERS FOR INDIVIDUAL WORKSPACES ---
+# Sort target watchlist data
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)].copy() if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)].copy() if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)].copy() if not raw_whale.empty else raw_whale
 
-# Inject structural context mapping tags
 for df in [df_insider, df_poly, df_whale]:
     if df is not None and not df.empty and "Ticker" in df.columns:
         df["Sector"] = df["Ticker"].apply(data_store.get_sector)
@@ -202,9 +188,7 @@ with t1:
             df_insider, 
             hide_index=True, 
             use_container_width=True,
-            column_config={
-                "Value ($)": st.column_config.NumberColumn("Value ($)", format="$%,d")
-            }
+            column_config={"Value ($)": st.column_config.NumberColumn("Value ($)", format="$%,d")}
         )
     else:
         st.info("No active insider entries matching watchlist.")
@@ -223,22 +207,11 @@ with t3:
     if not df_whale.empty:
         col_w1, col_w2 = st.columns(2)
         with col_w1:
-            whale_filter = st.multiselect(
-                "Filter by Fund Type:", 
-                options=list(df_whale["Type"].unique()), 
-                default=list(df_whale["Type"].unique())
-            )
+            whale_filter = st.multiselect("Filter by Fund Type:", options=list(df_whale["Type"].unique()), default=list(df_whale["Type"].unique()))
         with col_w2:
-            flow_filter = st.multiselect(
-                "Filter Flow State:", 
-                options=list(df_whale["Change Direction"].unique()), 
-                default=list(df_whale["Change Direction"].unique())
-            )
+            flow_filter = st.multiselect("Filter Flow State:", options=list(df_whale["Change Direction"].unique()), default=list(df_whale["Change Direction"].unique()))
             
-        df_whale_filtered = df_whale[
-            df_whale["Type"].isin(whale_filter) & 
-            df_whale["Change Direction"].isin(flow_filter)
-        ]
+        df_whale_filtered = df_whale[df_whale["Type"].isin(whale_filter) & df_whale["Change Direction"].isin(flow_filter)]
         
         if not df_whale_filtered.empty:
             st.dataframe(
@@ -258,30 +231,26 @@ with t3:
 
 with t4:
     st.subheader("🦅 Federal Portfolio Strategy (MAGA Index)")
-    st.caption("Strategic Legislative Weightings, Policy Mandates, and Domestic Onshoring Vectors")
+    st.caption("Live Legislative Weightings, Policy Mandates, and Strategic Domestic Onshoring Catalysts")
     try:
-        maga_raw = data_store.get_maga_portfolio_data()
+        # Request live tracking pipeline metrics from backend engine
+        maga_raw = data_store.get_live_maga_strategy_data(wl)
         df_maga = pd.DataFrame(maga_raw)
         
-        # Cross-reference with the active watchlist symbols to keep focus razor sharp
-        df_maga_filtered = df_maga[df_maga["Ticker"].isin(wl)].copy()
-        
-        if not df_maga_filtered.empty:
-            # Map sectors seamlessly into layout
-            df_maga_filtered["Sector"] = df_maga_filtered["Ticker"].apply(data_store.get_sector)
+        if not df_maga.empty:
+            df_maga["Sector"] = df_maga["Ticker"].apply(data_store.get_sector)
             st.dataframe(
-                df_maga_filtered[["Ticker", "Sector", "Holding Sizing", "Policy Catalyst"]], 
+                df_maga[["Ticker", "Sector", "Holding Sizing", "Policy Catalyst"]], 
                 hide_index=True, 
                 use_container_width=True
             )
         else:
-            st.info("Add strategic policy-driven symbols (NVDA, INTC, FIX, POWL, ALB, LITE) in the Watchlist tab to monitor index allocations.")
+            st.info("Track strategic policy-driven assets (NVDA, INTC, FIX, POWL, ALB, LITE) in the Watchlist tab to map federal spending trends.")
     except:
-        st.error("Static index matrix offline.")
+        st.error("Live policy-tracking interface currently offline.")
 
 with t5:
     st.subheader("Watchlist Manager")
-    
     with st.form("add_ticker_form", clear_on_submit=True):
         new_tk = st.text_input("Enter Ticker Symbol:").upper().strip()
         submitted = st.form_submit_button("➕ Add to Watchlist")
