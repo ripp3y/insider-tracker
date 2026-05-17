@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import warnings
 import data_store
+import yfinance as yf
 
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="Asymmetry", page_icon="👁️‍🗨️", layout="wide")
@@ -51,6 +52,59 @@ def get_clean_data(watchlist_symbols):
 
     return df_i, df_p, df_w
 
+# --- RELATIVE VOLUME BREAKOUT PROCESSING ENGINE ---
+@st.cache_data(ttl=900)  # Cache for 15 minutes to stay lighting fast on mobile and protect API
+def calculate_volume_breakouts(watchlist_tickers):
+    volume_data = []
+    if not watchlist_tickers:
+        return pd.DataFrame()
+        
+    try:
+        # Download historical daily charts for the last 30 days to extract 20 solid trading sessions
+        tickers_str = " ".join(watchlist_tickers)
+        hist = yf.download(tickers_str, period="1mo", group_by="ticker", progress=False)
+        
+        for ticker in watchlist_tickers:
+            try:
+                # Handle single ticker vs multi-ticker data frame structures from yfinance
+                if len(watchlist_tickers) == 1:
+                    df_t = hist
+                else:
+                    df_t = hist[ticker]
+                    
+                df_t = df_t.dropna(subset=["Volume", "Close"])
+                
+                if len(df_t) >= 2:
+                    # Isolate current session values and calculate historic moving average
+                    current_vol = float(df_t["Volume"].iloc[-1])
+                    current_price = float(df_t["Close"].iloc[-1])
+                    prev_price = float(df_t["Close"].iloc[-2])
+                    
+                    # 20-day volume moving average baseline (excluding today's live candle)
+                    avg_vol_20d = float(df_t["Volume"].iloc[-21:-1].mean())
+                    
+                    if avg_vol_20d > 0:
+                        vol_ratio = current_vol / avg_vol_20d
+                        price_change = ((current_price - prev_price) / prev_price) * 100
+                        
+                        # Set up clear direction labels for momentum tracking
+                        direction = "🟢 Accumulation" if price_change >= 0 else "🔴 Distribution"
+                        status = "🔥 BREAKOUT" if vol_ratio >= 1.5 else "💤 Normal"
+                        
+                        volume_data.append({
+                            "Ticker": ticker,
+                            "Vol Ratio": round(vol_ratio, 2),
+                            "Flow State": direction,
+                            "Status": status,
+                            "Price Change": round(price_change, 2)
+                        })
+            except:
+                continue # Skip any faulty or delisted tickers safely without breaking the app
+    except:
+        pass
+        
+    return pd.DataFrame(volume_data)
+
 # Extract raw structured matrices (Unfiltered global sets)
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
@@ -58,7 +112,6 @@ raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 # --- TRIPLE CONVICTION ALERT MATRIX OVERVIEW (GLOBAL LOOKUP) ---
 st.markdown("### 🔥 Triple Conviction Matrix")
 
-# Pull overlapping data from the raw, global datasets before filtering down
 insider_set = set(raw_insider["Ticker"].unique()) if not raw_insider.empty else set()
 poly_set = set(raw_poly["Ticker"].unique()) if not raw_poly.empty else set()
 whale_set = set(raw_whale["Ticker"].unique()) if not raw_whale.empty else set()
@@ -103,6 +156,26 @@ if matrix_rows:
     )
 else:
     st.info("No cross-stream activity intersections found on your active watchlist.")
+
+
+# --- LIVE RELATIVE VOLUME METRICS BOARD ---
+st.markdown("### 📊 Relative Volume Momentum ($Volume > 20\text{-day MA}$)")
+df_volume = calculate_volume_breakouts(wl)
+
+if not df_volume.empty:
+    # Sort with highest volume breakout setups sitting at the very top
+    df_volume = df_volume.sort_values(by="Vol Ratio", ascending=False)
+    st.dataframe(
+        df_volume,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Vol Ratio": st.column_config.NumberColumn("Relative Vol (x)", format="%.2fx"),
+            "Price Change": st.column_config.NumberColumn("Price Change (%)", format="%.2f%%")
+        }
+    )
+else:
+    st.info("Market feeds loading or currently offline.")
 
 st.markdown("---")
 
