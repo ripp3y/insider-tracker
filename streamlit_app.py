@@ -43,7 +43,7 @@ def get_clean_data(watchlist_symbols):
     except TypeError:
         df_w = pd.DataFrame(data_store.get_institutional_data_raw())
 
-    # Standardize 'Ticker' columns safely across all files
+    # Standardize Ticker references cleanly across all loaded dataframes
     for df in [df_i, df_p, df_w]:
         if df is not None and not df.empty:
             t_col = next((c for c in df.columns if str(c).lower() in ["ticker", "symbol"]), None)
@@ -55,7 +55,7 @@ def get_clean_data(watchlist_symbols):
 
 
 # --- ZERO-DEPENDENCY NATIVE VOLUME PARSER ENGINE ---
-@st.cache_data(ttl=900)  # 15-minute mobile cache protection
+@st.cache_data(ttl=900)  # 15-minute data pipeline cache protective wall
 def calculate_native_volume_breakouts(watchlist_tickers):
     volume_data = []
     
@@ -76,6 +76,7 @@ def calculate_native_volume_breakouts(watchlist_tickers):
                 current_price = float(closes[-1])
                 prev_price = float(closes[-2])
                 
+                # Smoothed 20-day historical trading volume calculation
                 historic_volumes = volumes[-21:-1]
                 avg_vol_20d = sum(historic_volumes) / len(historic_volumes) if historic_volumes else 0
                 
@@ -99,11 +100,11 @@ def calculate_native_volume_breakouts(watchlist_tickers):
     return pd.DataFrame(volume_data)
 
 
-# Extract raw structured matrices (Unfiltered global sets)
+# Populate working runtime matrices
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
 
-# --- TRIPLE CONVICTION ALERT MATRIX OVERVIEW (GLOBAL LOOKUP) ---
+# --- TRIPLE CONVICTION ALERT MATRIX OVERVIEW ---
 st.markdown("### 🔥 Triple Conviction Matrix")
 
 insider_set = set(raw_insider["Ticker"].unique()) if not raw_insider.empty else set()
@@ -139,8 +140,7 @@ for ticker in wl:
 if matrix_rows:
     df_matrix = pd.DataFrame(matrix_rows).sort_values(by="Score", ascending=False)
     
-    has_tier3 = any(df_matrix["Score"] == 3)
-    if has_tier3:
+    if any(df_matrix["Score"] == 3):
         st.error("⚠️ CRITICAL ALIGNMENT DETECTED: Review Tier 3 Watchlist Targets Below")
         
     st.dataframe(
@@ -152,7 +152,7 @@ else:
     st.info("No cross-stream activity intersections found on your active watchlist.")
 
 
-# --- LIVE RELATIVE VOLUME METRICS BOARD (NATIVE PIPELINE) ---
+# --- LIVE RELATIVE VOLUME METRICS BOARD ---
 st.markdown("### 📊 Relative Volume Momentum ($Volume > 20\\text{-day MA}$)")
 df_volume = calculate_native_volume_breakouts(wl)
 
@@ -173,18 +173,18 @@ else:
 st.markdown("---")
 
 
-# --- LOCAL WATCHLIST FILTERS FOR INDIVIDUAL TABS ---
+# --- LOCAL WATCHLIST FILTERS FOR INDIVIDUAL WORKSPACES ---
 df_insider = raw_insider[raw_insider["Ticker"].isin(wl)].copy() if not raw_insider.empty else raw_insider
 df_poly = raw_poly[raw_poly["Ticker"].isin(wl)].copy() if not raw_poly.empty else raw_poly
 df_whale = raw_whale[raw_whale["Ticker"].isin(wl)].copy() if not raw_whale.empty else raw_whale
 
-# Inject Sector Map descriptions from data_store matrix
+# Inject structural context mapping tags
 for df in [df_insider, df_poly, df_whale]:
     if df is not None and not df.empty and "Ticker" in df.columns:
         df["Sector"] = df["Ticker"].apply(data_store.get_sector)
 
 
-# --- CORE CONTROL SIDEBAR ---
+# --- CORE SIDEBAR CONTROLS ---
 st.sidebar.header("🐋 Core Filters")
 min_insider = st.sidebar.slider("Min Insider Value ($)", 0, 1500000, 0, 50000)
 
@@ -192,7 +192,7 @@ if not df_insider.empty and "Value ($)" in df_insider.columns:
     df_insider = df_insider[df_insider["Value ($)"].abs() >= min_insider]
 
 
-# --- TABS WORKSPACE UI ---
+# --- MAIN TABS FRAMEWORK ---
 t1, t2, t3, t4, t5 = st.tabs(["🏢 Insiders", "🏛️ Politics", "🐋 Whales", "🦅 MAGA", "📋 Watchlist"])
 
 with t1:
@@ -201,7 +201,7 @@ with t1:
         st.dataframe(
             df_insider, 
             hide_index=True, 
-            width="stretch",
+            use_container_width=True,
             column_config={
                 "Value ($)": st.column_config.NumberColumn("Value ($)", format="$%,d")
             }
@@ -212,29 +212,54 @@ with t1:
 with t2:
     st.subheader("Political Trades")
     if not df_poly.empty:
-        st.dataframe(df_poly, hide_index=True, width="stretch")
+        st.dataframe(df_poly, hide_index=True, use_container_width=True)
     else:
         st.info("No political data found for these assets.")
 
 with t3:
-    st.subheader("Whale Blocks")
+    st.subheader("🐋 Institutional Whale Blocks")
+    st.caption("Tracking 13F Quarterlies, Active 13D Block Accumulations, and Passive 13G Statements")
+    
     if not df_whale.empty:
-        st.dataframe(
-            df_whale, 
-            hide_index=True, 
-            width="stretch",
-            column_config={
-                "Shares Changed": st.column_config.NumberColumn("Shares Changed", format="%,d"),
-                "Value ($)": st.column_config.NumberColumn("Value ($)", format="$%,d")
-            }
-        )
+        col_w1, col_w2 = st.columns(2)
+        with col_w1:
+            whale_filter = st.multiselect(
+                "Filter by Fund Type:", 
+                options=list(df_whale["Type"].unique()), 
+                default=list(df_whale["Type"].unique())
+            )
+        with col_w2:
+            flow_filter = st.multiselect(
+                "Filter Flow State:", 
+                options=list(df_whale["Change Direction"].unique()), 
+                default=list(df_whale["Change Direction"].unique())
+            )
+            
+        df_whale_filtered = df_whale[
+            df_whale["Type"].isin(whale_filter) & 
+            df_whale["Change Direction"].isin(flow_filter)
+        ]
+        
+        if not df_whale_filtered.empty:
+            st.dataframe(
+                df_whale_filtered.sort_values(by="Value ($)", ascending=False), 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    "Shares Changed": st.column_config.NumberColumn("Shares Δ", format="%,d"),
+                    "Value ($)": st.column_config.NumberColumn("Est. Value ($)", format="$%,d"),
+                    "Report Date": st.column_config.DateColumn("Filing Date")
+                }
+            )
+        else:
+            st.info("No whale blocks found matching the active filters.")
     else:
-        st.info("No active block data matching watchlist.")
+        st.info("No active whale entries matching your current watchlist tickers.")
 
 with t4:
     st.subheader("Federal Portfolio Strategy")
     try:
-        st.dataframe(pd.DataFrame(data_store.get_maga_portfolio_data()), hide_index=True, width="stretch")
+        st.dataframe(pd.DataFrame(data_store.get_maga_portfolio_data()), hide_index=True, use_container_width=True)
     except:
         st.error("Static data feed offline.")
 
