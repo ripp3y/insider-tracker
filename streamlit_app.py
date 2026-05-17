@@ -14,24 +14,28 @@ st.caption("Alpha Tracking Dashboard")
 
 DEFAULT_TICKERS = ["NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE"]
 
-# --- URL QUERY PARAM CONTROL ---
-qp = st.query_params
-if "list" in qp and qp["list"].strip():
-    current_wl = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
-else:
-    current_wl = DEFAULT_TICKERS.copy()
-    st.query_params["list"] = ",".join(current_wl)
+# --- FIXED URL QUERY PARAM CONTROL ---
+if "watchlist" not in st.session_state:
+    qp = st.query_params
+    if "list" in qp and qp["list"].strip():
+        st.session_state.watchlist = [t.strip().upper() for t in qp["list"].split(",") if t.strip()]
+    else:
+        st.session_state.watchlist = DEFAULT_TICKERS.copy()
+        st.query_params["list"] = ",".join(st.session_state.watchlist)
 
-st.session_state.watchlist = current_wl
+# Bind the working variable directly to the established session state
 wl = st.session_state.watchlist
 
 
 # --- DATA CACHING ENGINE ---
 @st.cache_data(ttl=300)
 def get_clean_data(watchlist_symbols):
-    df_i = pd.DataFrame(data_store.get_insider_data_raw(watchlist_symbols))
-    df_p = pd.DataFrame(data_store.get_fallback_political_data(watchlist_symbols))
-    df_w = pd.DataFrame(data_store.get_institutional_data_raw(watchlist_symbols))
+    # Ensure we fall back to everything if the list somehow arrives empty
+    symbols = watchlist_symbols if watchlist_symbols else DEFAULT_TICKERS
+    
+    df_i = pd.DataFrame(data_store.get_insider_data_raw(symbols))
+    df_p = pd.DataFrame(data_store.get_fallback_political_data(symbols))
+    df_w = pd.DataFrame(data_store.get_institutional_data_raw(symbols))
 
     for df in [df_i, df_p, df_w]:
         if df is not None and not df.empty:
@@ -46,8 +50,9 @@ def get_clean_data(watchlist_symbols):
 # --- NATIVE YAHOO FINANCE HISTORICAL VOLUME ENGINE ---
 @st.cache_data(ttl=900)
 def calculate_native_volume_breakouts(watchlist_tickers):
+    symbols = watchlist_tickers if watchlist_tickers else DEFAULT_TICKERS
     volume_data = []
-    for ticker in watchlist_tickers:
+    for ticker in symbols:
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=1mo&interval=1d"
             req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -85,7 +90,7 @@ def calculate_native_volume_breakouts(watchlist_tickers):
     return pd.DataFrame(volume_data)
 
 
-# Populate background matrices
+# Populate background matrices safely
 raw_insider, raw_poly, raw_whale = get_clean_data(wl)
 
 
