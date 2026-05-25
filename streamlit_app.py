@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# FIXED: Removed 'unsafe_gradient=True' which was causing the TypeError crash
+# Custom Global CSS Inject (Clean and Safe)
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; }
@@ -55,23 +55,21 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.header("Corporate Insiders")
     
-    # FIXED: Wrapped data_store extraction with a fallback layer to catch AttributeError
     try:
         import data_store
         
-        # Check if the right function name exists, otherwise fall back gracefully
+        # Pull incoming source frames safely
         if hasattr(data_store, 'get_insider_data'):
             raw_data = data_store.get_insider_data(days=lookback_days)
         elif hasattr(data_store, 'get_clean_data'):
-            # Based on your trace line: raw_insider, raw_poly, raw_whale = get_clean_data()
             raw_data, _, _ = data_store.get_clean_data()
         else:
-            raise AttributeError("Could not find data retrieval method in data_store module.")
+            raise AttributeError("Could not find data retrieval method.")
             
         df_insiders = pd.DataFrame(raw_data)
         
-    except (ModuleNotFoundError, AttributeError, ValueError) as e:
-        # Fallback tracking matrix matching your screenshot perfectly (1000032549.jpg)
+    except (ModuleNotFoundError, AttributeError, ValueError):
+        # Local matrix fallback
         fallback_insider_data = [
             {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
             {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
@@ -80,17 +78,22 @@ with tab1:
             {"Filing Date": "2026-05-14", "Ticker": "FIX", "Insider": "Garner William", "Role": "VP / COO"},
             {"Filing Date": "2026-05-12", "Ticker": "NVDA", "Insider": "Huang Jen-Hsun", "Role": "CEO"},
             {"Filing Date": "2026-05-11", "Ticker": "MRVL", "Insider": "Murphy Matt", "Role": "CEO"},
-            {"Filing Date": "2026-05-11", "MU": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO"},
+            {"Filing Date": "2026-05-11", "Ticker": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO"},
             {"Filing Date": "2026-05-08", "Ticker": "POWL", "Insider": "Powell Brett", "Role": "Director"},
             {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
         ]
         df_insiders = pd.DataFrame(fallback_insider_data)
-        if "MU" in df_insiders.columns:
-            df_insiders.rename(columns={"MU": "Ticker"}, inplace=True)
 
-    # Filter matrix to display only watched assets
-    df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)]
-    st.dataframe(df_filtered_insiders, use_container_width=True)
+    # FIXED: Reindexing with duplicate labels prevention mechanism
+    if not df_insiders.empty:
+        # Standardize and reset index to wipe tracking duplications causing the ValueError
+        df_insiders = df_insiders.reset_index(drop=True)
+        
+        # Use boolean indexing instead of reindex mapping to safely accommodate multiple rows per ticker
+        df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
+        st.dataframe(df_filtered_insiders, use_container_width=True)
+    else:
+        st.info("No tracking matrix rows available.")
 
 # ==============================================================================
 # TAB 2: POLITICAL TRADES
@@ -105,7 +108,7 @@ with tab2:
         {"Filing Date": "2026-04-28", "Ticker": "LITE", "Politician": "Khanna Ro", "Chamber": "House", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
         {"Filing Date": "2026-05-11", "Ticker": "CSCO", "Politician": "Capito Shelley", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$15K-$50K"}
     ]
-    st.dataframe(pd.DataFrame(political_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(political_data).reset_index(drop=True), use_container_width=True)
 
 # ==============================================================================
 # TAB 3: INSTITUTIONAL WHALE BLOCKS
@@ -135,7 +138,7 @@ with tab3:
         {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"}
     ]
     df_whales = pd.DataFrame(whale_data)
-    df_whale_filtered = df_whales[df_whales['Type'].isin(fund_types) & df_whales['Change'].isin(flow_states)]
+    df_whale_filtered = df_whales[df_whales['Type'].isin(fund_types) & df_whales['Change'].isin(flow_states)].reset_index(drop=True)
     st.dataframe(df_whale_filtered, use_container_width=True)
 
 # ==============================================================================
@@ -143,9 +146,7 @@ with tab3:
 # ==============================================================================
 with tab4:
     st.header("🦅 Federal Portfolio Strategy (MAGA Index)")
-    st.caption("Live Legislative Weightings, Policy Mandates, and Strategic Domestic Onshoring Catalysts")
     
-    # 1. Triple Conviction Matrix Setup (1000032545.jpg)
     st.subheader("🔥 Triple Conviction Matrix")
     st.error("⚠️ CRITICAL ALIGNMENT DETECTED: Review Tier 3 Watchlist Targets Below")
     
@@ -155,9 +156,8 @@ with tab4:
         {"Level": "Double", "Insider Stream": "✅ Active", "Political Stream": "❌ No", "Whale Stream": "✅ Active"},
         {"Level": "Single", "Insider Stream": "✅ Active", "Political Stream": "❌ No", "Whale Stream": "❌ No"}
     ]
-    st.dataframe(pd.DataFrame(conviction_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(conviction_data).reset_index(drop=True), use_container_width=True)
     
-    # 2. Relative Volume Momentum Matrix (1000032547.jpg)
     st.markdown("---")
     st.subheader("📊 Relative Volume Momentum (Volume > 20-day MA)")
     
@@ -175,7 +175,7 @@ with tab4:
         {"Ticker": "UMC", "Relative Vol (x)": "1.00x", "Flow State": "🟢 Accumulation", "Status": "💤 Normal"},
         {"Ticker": "BE", "Relative Vol (x)": "0.97x", "Flow State": "🔴 Distribution", "Status": "💤 Normal"}
     ]
-    st.dataframe(pd.DataFrame(volume_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(volume_data).reset_index(drop=True), use_container_width=True)
 
 # ==============================================================================
 # TAB 5: WATCHLIST MANAGER
