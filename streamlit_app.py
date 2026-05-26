@@ -96,51 +96,43 @@ with tab1:
         st.info("No tracking matrix rows available.")
 
 # ==============================================================================
-# TAB 2: POLITICAL TRADES
+# TAB 2: POLITICAL TRADES (DYNAMIC LOOKBACK IMPLEMENTATION)
 # ==============================================================================
 with tab2:
     st.header("Political Trades")
     
+    # Raw dataset tracking matrix
     political_data = [
         {"Filing Date": "2026-05-14", "Ticker": "NVDA", "Politician": "Pelosi Nancy", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
         {"Filing Date": "2026-05-12", "Ticker": "INTC", "Politician": "Tuberville Tommy", "Chamber": "Senate", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
         {"Filing Date": "2026-05-10", "Ticker": "MRVL", "Politician": "McCaul Michael", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
         {"Filing Date": "2026-04-28", "Ticker": "LITE", "Politician": "Khanna Ro", "Chamber": "House", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
-        {"Filing Date": "2026-05-11", "Ticker": "CSCO", "Politician": "Capito Shelley", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$15K-$50K"}
+        {"Filing Date": "2026-05-11", "Ticker": "CSCO", "Politician": "Capito Shelley", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$15K-$50K"},
+        {"Filing Date": "2026-03-15", "Ticker": "FIX", "Politician": "Whitehouse Sheldon", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$50K-$100K"},
+        {"Filing Date": "2026-02-20", "Ticker": "AXTI", "Politician": "DelBene Suzan", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$100K-$250K"}
     ]
-    st.dataframe(pd.DataFrame(political_data).reset_index(drop=True), use_container_width=True)
-
-# ==============================================================================
-# TAB 3: INSTITUTIONAL WHALE BLOCKS
-# ==============================================================================
-with tab3:
-    st.header("🐋 Institutional Whale Blocks")
     
-    fund_types = st.multiselect(
-        "Filter by Fund Type:",
-        ["13F", "13D (Active)", "13G (Passive)"],
-        default=["13F", "13D (Active)", "13G (Passive)"]
-    )
+    df_poly = pd.DataFrame(political_data)
     
-    flow_states = st.multiselect(
-        "Filter Flow State:",
-        ["Accumulation", "Reduction", "Material Buy", "Disposal"],
-        default=["Accumulation", "Reduction"]
-    )
-
-    whale_data = [
-        {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "INTC", "Whale/Fund": "BlackRock Inc.", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "ALB", "Whale/Fund": "Coatue Management", "Type": "13G (Passive)", "Change": "Reduction"},
-        {"Ticker": "MRVL", "Whale/Fund": "Point72 Asset Mgmt", "Type": "13D (Active)", "Change": "Material Buy"},
-        {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "NVDA", "Whale/Fund": "Renaissance Technologies", "Type": "13F", "Change": "Reduction"},
-        {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"}
-    ]
-    df_whales = pd.DataFrame(whale_data)
-    df_whale_filtered = df_whales[df_whales['Type'].isin(fund_types) & df_whales['Change'].isin(flow_states)].reset_index(drop=True)
-    st.dataframe(df_whale_filtered, use_container_width=True)
-
+    # Convert to datetime to obey your sidebar lookback slider state dynamically
+    df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
+    
+    # Calculate cutoff threshold based on current app execution time (May 25, 2026)
+    current_date = pd.to_datetime("2026-05-25")
+    cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
+    
+    # Apply dual constraint: Active Watchlist Match + Lookback Window Validation
+    df_poly_filtered = df_poly[
+        (df_poly['Ticker'].isin(st.session_state.watchlist)) & 
+        (df_poly['Filing Date'] >= cutoff_date)
+    ].sort_values(by="Filing Date", ascending=False).reset_index(drop=True)
+    
+    # Format dates back to clean strings for visualization
+    if not df_poly_filtered.empty:
+        df_poly_filtered['Filing Date'] = df_poly_filtered['Filing Date'].dt.strftime('%Y-%m-%d')
+        st.dataframe(df_poly_filtered, use_container_width=True)
+    else:
+        st.info(f"🚫 No political trade anomalies found for watchlist tickers within the past {lookback_days} days.")
 # ==============================================================================
 # TAB 4: FEDERAL PORTFOLIO STRATEGY (MAGA INDEX)
 # ==============================================================================
