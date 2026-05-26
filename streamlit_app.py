@@ -203,22 +203,38 @@ with tab4:
     else:
         st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
 
-    # 2. Technical Floor Anchors
+   # ==============================================================================
+    # 2. DYNAMIC TECHNICAL FLOOR ANCHORS & ALIGNMENT
+    # ==============================================================================
     st.markdown("---")
     st.subheader("🎯 Entry Windows & Support Anchors")
+    st.caption("Calculating relative proximity to exponential moving averages based on selected configuration parameters.")
     
-    technical_ledger = [
-        {"Ticker": "LITE", "Last Price": "$74.50", "21-day EMA": "$68.20", "50-day EMA": "$62.00", "Technical Setup": "🔥 Breakout"},
-        {"Ticker": "POWL", "Last Price": "$185.10", "21-day EMA": "$178.40", "50-day EMA": "$165.00", "Technical Setup": "🔥 Breakout"},
-        {"Ticker": "INTC", "Last Price": "$30.15", "21-day EMA": "$30.05", "50-day EMA": "$32.40", "Technical Setup": "🟢 Entry Zone"},
-        {"Ticker": "FIX", "Last Price": "$242.00", "21-day EMA": "$241.50", "50-day EMA": "$235.00", "Technical Setup": "🟢 Entry Zone"},
-        {"Ticker": "NVDA", "Last Price": "$945.00", "21-day EMA": "$910.00", "50-day EMA": "$860.00", "Technical Setup": "💤 Premium / Hold"},
-        {"Ticker": "ALB", "Last Price": "$124.30", "21-day EMA": "$118.00", "50-day EMA": "$115.20", "Technical Setup": "💤 Premium / Hold"},
-        {"Ticker": "BE", "Last Price": "$12.10", "21-day EMA": "$12.05", "50-day EMA": "$13.50", "Technical Setup": "🟢 Entry Zone"}
-    ]
-    df_tech = pd.DataFrame(technical_ledger)
-    df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
-    st.dataframe(df_tech_filtered, width="stretch")
+    try:
+        # Pull live technical calculations from data_store engine
+        df_tech_raw = data_store.get_technical_floors(tickers=st.session_state.watchlist)
+        
+        if not df_tech_raw.empty:
+            st.dataframe(df_tech_raw, width="stretch")
+        else:
+            st.info("Technical evaluation pipeline returned an empty matrix for the current watchlist configuration.")
+            
+    except AttributeError:
+        # Robust fallback layer if technical engine additions aren't fully deployed to main branch yet
+        st.warning("⚠️ Using local context parameters. Deploy technical updates to data_store.py to fully unlock automated calculations.")
+        
+        fallback_ledger = [
+            {"Ticker": "LITE", "Last Price": "$74.50", "21-day EMA": "$68.20", "50-day EMA": "$62.00", "Technical Setup": "🔥 Breakout"},
+            {"Ticker": "POWL", "Last Price": "$185.10", "21-day EMA": "$178.40", "50-day EMA": "$165.00", "Technical Setup": "🔥 Breakout"},
+            {"Ticker": "INTC", "Last Price": "$30.15", "21-day EMA": "$30.05", "50-day EMA": "$32.40", "Technical Setup": "🟢 Entry Zone"},
+            {"Ticker": "FIX", "Last Price": "$242.00", "21-day EMA": "$241.50", "50-day EMA": "$235.00", "Technical Setup": "🟢 Entry Zone"},
+            {"Ticker": "NVDA", "Last Price": "$945.00", "21-day EMA": "$910.00", "50-day EMA": "$860.00", "Technical Setup": "💤 Premium / Hold"},
+            {"Ticker": "ALB", "Last Price": "$124.30", "21-day EMA": "$118.00", "50-day EMA": "$115.20", "Technical Setup": "💤 Premium / Hold"},
+            {"Ticker": "BE", "Last Price": "$12.10", "21-day EMA": "$12.05", "50-day EMA": "$13.50", "Technical Setup": "🟢 Entry Zone"}
+        ]
+        df_tech = pd.DataFrame(fallback_ledger)
+        df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
+        st.dataframe(df_tech_filtered, width="stretch")
     
     # 3. Relative Volume Matrix
     st.markdown("---")
