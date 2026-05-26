@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# FIXED: Removed the buggy 'unsafe_gradient' argument throwing the TypeError
+# Custom Global CSS Inject (Clean parameters to prevent Streamlit layout exceptions)
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; }
@@ -37,7 +37,7 @@ lookback_days = st.sidebar.slider(
     value=90
 )
 
-# Active Watchlist Array (Ensuring complete item uniqueness to avoid Pandas index collisions)
+# Active Watchlist Array (Enforcing complete item uniqueness to avoid Pandas index collisions)
 if 'watchlist' not in st.session_state:
     raw_watchlist = [
         "NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE", "MU", "AMD", "FN", 
@@ -46,7 +46,7 @@ if 'watchlist' not in st.session_state:
         "FLEX", "TTMI", "UMC", "GOOGL", "NUE", "NWPX", "CSCO", "GOOG", "STLD", 
         "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ"
     ]
-    # Filter out EZRA just in case it attempts to creep into active memory frames
+    # Keep list clean, sorted, and unique
     st.session_state.watchlist = sorted(list(set([t for t in raw_watchlist if t != "EZRA"])))
 
 # ==============================================================================
@@ -147,3 +147,70 @@ with tab2:
             df_poly_render['Filing Date'] = df_poly_render['Filing Date'].dt.strftime('%Y-%m-%d')
             st.dataframe(df_poly_render, use_container_width=True)
         else:
+            st.info(f"🚫 No matching political trade activity identified within the trailing {lookback_days} days.")
+    else:
+        st.info(f"🚫 No political trade activity recorded inside this timeframe.")
+
+# ==============================================================================
+# TAB 3: INSTITUTIONAL WHALE BLOCKS
+# ==============================================================================
+with tab3:
+    st.header("🐋 Institutional Whale Blocks")
+    
+    fund_types = st.multiselect("Filter by Fund Type:", ["13F", "13D (Active)", "13G (Passive)"], default=["13F", "13D (Active)", "13G (Passive)"])
+    flow_states = st.multiselect("Filter Flow State:", ["Accumulation", "Reduction", "Material Buy", "Disposal"], default=["Accumulation", "Reduction", "Material Buy"])
+
+    if not df_whales.empty:
+        df_whale_filtered = df_whales[
+            df_whales['Type'].isin(fund_types) & 
+            df_whales['Change'].isin(flow_states) & 
+            df_whales['Ticker'].isin(st.session_state.watchlist)
+        ].reset_index(drop=True)
+        st.dataframe(df_whale_filtered, use_container_width=True)
+    else:
+        st.info("No institutional block flows available.")
+
+# ==============================================================================
+# TAB 4: FEDERAL PORTFOLIO STRATEGY (MAGA INDEX) & CONVICTION MATRIX ENGINE
+# ==============================================================================
+with tab4:
+    st.header("🦅 Federal Portfolio Strategy (MAGA Index)")
+    st.subheader("🔥 Algorithmic Triple Conviction Matrix")
+    
+    active_insider_buys = set(df_insiders['Ticker'].unique()) if not df_insiders.empty else set()
+    active_political_buys = set(df_poly_filtered[df_poly_filtered['Transaction'].str.contains("Purchase", na=False)]['Ticker'].unique()) if not df_poly_filtered.empty else set()
+    active_whale_buys = set(positive_whales['Ticker'].unique()) if not positive_whales.empty else set()
+    
+    matrix_rows = []
+    
+    # Safely scan deduplicated watchlist tickers
+    for ticker in sorted(list(set(st.session_state.watchlist))):
+        has_insider = ticker in active_insider_buys
+        has_politics = ticker in active_political_buys
+        has_whale = ticker in active_whale_buys
+        match_count = sum([has_insider, has_politics, has_whale])
+        
+        if match_count >= 2:
+            level_badge = "🔴 TRIPLE CONVICTION" if match_count == 3 else "🟡 Double Conviction"
+            matrix_rows.append({
+                "Ticker": ticker,
+                "Conviction Level": level_badge,
+                "Corporate Insiders": "✅ Active Buy" if has_insider else "❌ No Inflow",
+                "Political Stream": "✅ Active Buy" if has_politics else "❌ No Inflow",
+                "Institutional Whales": "✅ Active Accumulation" if has_whale else "❌ No Inflow"
+            })
+            
+    if matrix_rows:
+        df_matrix = pd.DataFrame(matrix_rows).sort_values(by="Conviction Level", ascending=False).reset_index(drop=True)
+        st.error("⚠️ AUTOMATED CROSS-STREAM CONVICTION ALIGNMENT DETECTED:")
+        st.dataframe(df_matrix, use_container_width=True)
+    else:
+        st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
+
+    # 2. Technical Floor Anchors
+    st.markdown("---")
+    st.subheader("🎯 Entry Windows & Support Anchors")
+    
+    technical_ledger = [
+        {"Ticker": "LITE", "Last Price": "$74.50", "21-day EMA": "$68.20", "50-day EMA": "$62.00", "Technical Setup": "🔥 Breakout"},
+        {"Ticker": "POWL", "Last Price": "$185.10", "21-day EMA": "$178.40", "50-day EMA": "$165
