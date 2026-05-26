@@ -48,8 +48,11 @@ if 'watchlist' not in st.session_state:
     ]
 
 # ==============================================================================
-# DATA INGESTION LAYER (Centralized for Cross-Referencing)
+# DATA INGESTION & STANDARDIZATION LAYER
 # ==============================================================================
+current_date = pd.to_datetime("2026-05-25")
+cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
+
 # 1. Corporate Insiders Source
 fallback_insider_data = [
     {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
@@ -74,7 +77,21 @@ except Exception:
 
 df_insiders = df_insiders.reset_index(drop=True)
 
-# 2. Whales Source
+# 2. Political Trades Source (With unified Datetime casting)
+political_data = [
+    {"Filing Date": "2026-05-14", "Ticker": "NVDA", "Politician": "Pelosi Nancy", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
+    {"Filing Date": "2026-05-12", "Ticker": "INTC", "Politician": "Tuberville Tommy", "Chamber": "Senate", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
+    {"Filing Date": "2026-05-10", "Ticker": "MRVL", "Politician": "McCaul Michael", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
+    {"Filing Date": "2026-05-11", "Ticker": "CSCO", "Politician": "Capito Shelley", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$15K-$50K"},
+    {"Filing Date": "2026-04-28", "Ticker": "LITE", "Politician": "Khanna Ro", "Chamber": "House", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
+    {"Filing Date": "2026-03-15", "Ticker": "FIX", "Politician": "Whitehouse Sheldon", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$50K-$100K"},
+    {"Filing Date": "2026-02-28", "Ticker": "AXTI", "Politician": "DelBene Suzan", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$100K-$250K"}
+]
+df_poly = pd.DataFrame(political_data)
+df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
+df_poly_filtered = df_poly[df_poly['Filing Date'] >= cutoff_date]
+
+# 3. Whales Source
 whale_data = [
     {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
     {"Ticker": "INTC", "Whale/Fund": "BlackRock Inc.", "Type": "13F", "Change": "Accumulation"},
@@ -85,6 +102,7 @@ whale_data = [
     {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"}
 ]
 df_whales = pd.DataFrame(whale_data).reset_index(drop=True)
+positive_whales = df_whales[df_whales['Change'].isin(["Accumulation", "Material Buy"])]
 
 # Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -104,7 +122,6 @@ with tab1:
     st.caption("Automatically scanning for active tickers where both corporate insiders and 13F/D/G institutional whales are accumulation buyers simultaneously.")
 
     insider_tickers = set(df_insiders['Ticker'].unique())
-    positive_whales = df_whales[df_whales['Change'].isin(["Accumulation", "Material Buy"])]
     whale_tickers = set(positive_whales['Ticker'].unique())
     cluster_targets = insider_tickers.intersection(whale_tickers).intersection(set(st.session_state.watchlist))
     
@@ -141,30 +158,11 @@ with tab1:
 with tab2:
     st.header("Political Trades")
     
-    political_data = [
-        {"Filing Date": "2026-05-14", "Ticker": "NVDA", "Politician": "Pelosi Nancy", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
-        {"Filing Date": "2026-05-12", "Ticker": "INTC", "Politician": "Tuberville Tommy", "Chamber": "Senate", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
-        {"Filing Date": "2026-05-10", "Ticker": "MRVL", "Politician": "McCaul Michael", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
-        {"Filing Date": "2026-05-11", "Ticker": "CSCO", "Politician": "Capito Shelley", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$15K-$50K"},
-        {"Filing Date": "2026-04-28", "Ticker": "LITE", "Politician": "Khanna Ro", "Chamber": "House", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
-        {"Filing Date": "2026-03-15", "Ticker": "FIX", "Politician": "Whitehouse Sheldon", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$50K-$100K"},
-        {"Filing Date": "2026-02-28", "Ticker": "AXTI", "Politician": "DelBene Suzan", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$100K-$250K"}
-    ]
+    df_poly_render = df_poly_filtered[df_poly_filtered['Ticker'].isin(st.session_state.watchlist)].sort_values(by="Filing Date", ascending=False).reset_index(drop=True)
     
-    df_poly = pd.DataFrame(political_data)
-    df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
-    
-    current_date = pd.to_datetime("2026-05-25")
-    cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
-    
-    df_poly_filtered = df_poly[
-        (df_poly['Ticker'].isin(st.session_state.watchlist)) & 
-        (df_poly['Filing Date'] >= cutoff_date)
-    ].sort_values(by="Filing Date", ascending=False).reset_index(drop=True)
-    
-    if not df_poly_filtered.empty:
-        df_poly_filtered['Filing Date'] = df_poly_filtered['Filing Date'].dt.strftime('%Y-%m-%d')
-        st.dataframe(df_poly_filtered, use_container_width=True)
+    if not df_poly_render.empty:
+        df_poly_render['Filing Date'] = df_poly_render['Filing Date'].dt.strftime('%Y-%m-%d')
+        st.dataframe(df_poly_render, use_container_width=True)
     else:
         st.info(f"🚫 No matching political trade activity identified within the trailing {lookback_days} days.")
 
@@ -195,17 +193,56 @@ with tab3:
     st.dataframe(df_whale_filtered, use_container_width=True)
 
 # ==============================================================================
-# TAB 4: FEDERAL PORTFOLIO STRATEGY (MAGA INDEX) & SUPPORT LINE WATCH
+# TAB 4: FEDERAL PORTFOLIO STRATEGY (MAGA INDEX) & CONVICTION MATRIX ENGINE
 # ==============================================================================
 with tab4:
     st.header("🦅 Federal Portfolio Strategy (MAGA Index)")
     
     # --------------------------------------------------------------------------
-    # NEW: AUTOMATED ENTRY WINDOWS & SUPPORT ANCHORS ENGINE
+    # NEW: DYNAMIC MULTI-STREAM INTERSECTION MATRIX ENGINE
     # --------------------------------------------------------------------------
-    st.subheader("🎯 Entry Windows & Support Anchors")
-    st.caption("Monitoring core convictions against daily moving average support baselines to identify low-risk allocation setups.")
+    st.subheader("🔥 Algorithmic Triple Conviction Matrix")
+    
+    # Extract unique active buyers per track within lookback frame
+    active_insider_buys = set(df_insiders['Ticker'].unique())
+    active_political_buys = set(df_poly_filtered[df_poly_filtered['Transaction'].str.contains("Purchase")]['Ticker'].unique())
+    active_whale_buys = set(positive_whales['Ticker'].unique())
+    
+    matrix_rows = []
+    
+    # Intersect data points across everything inside your active session watchlist
+    for ticker in st.session_state.watchlist:
+        has_insider = ticker in active_insider_buys
+        has_politics = ticker in active_political_buys
+        has_whale = ticker in active_whale_buys
+        
+        # Calculate score rank
+        match_count = sum([has_insider, has_politics, has_whale])
+        
+        if match_count >= 2:
+            level_badge = "🔴 TRIPLE CONVICTION" if match_count == 3 else "🟡 Double Conviction"
+            matrix_rows.append({
+                "Ticker": ticker,
+                "Conviction Level": level_badge,
+                "Corporate Insiders": "✅ Active Buy" if has_insider else "❌ No Inflow",
+                "Political Stream": "✅ Active Buy" if has_politics else "❌ No Inflow",
+                "Institutional Whales": "✅ Active Accumulation" if has_whale else "❌ No Inflow"
+            })
+            
+    df_matrix = pd.DataFrame(matrix_rows)
+    
+    if not df_matrix.empty:
+        # Sort so Triple Convictions sit right at the top
+        df_matrix = df_matrix.sort_values(by="Conviction Level", ascending=False).reset_index(drop=True)
+        st.error("⚠️ AUTOMATED CROSS-STREAM CONVICTION ALIGNMENT DETECTED:")
+        st.dataframe(df_matrix, use_container_width=True)
+    else:
+        st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
 
+    # 2. Technical Floor Anchors
+    st.markdown("---")
+    st.subheader("🎯 Entry Windows & Support Anchors")
+    
     technical_ledger = [
         {"Ticker": "LITE", "Last Price": "$74.50", "21-day EMA": "$68.20", "50-day EMA": "$62.00", "Technical Setup": "🔥 Breakout"},
         {"Ticker": "POWL", "Last Price": "$185.10", "21-day EMA": "$178.40", "50-day EMA": "$165.00", "Technical Setup": "🔥 Breakout"},
@@ -215,24 +252,10 @@ with tab4:
         {"Ticker": "ALB", "Last Price": "$124.30", "21-day EMA": "$118.00", "50-day EMA": "$115.20", "Technical Setup": "💤 Premium / Hold"},
         {"Ticker": "BE", "Last Price": "$12.10", "21-day EMA": "$12.05", "50-day EMA": "$13.50", "Technical Setup": "🟢 Entry Zone"}
     ]
-    df_tech = pd.DataFrame(technical_ledger)
-    
-    # Filter tech setups against what's currently in your watchlist state array
-    df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
+    df_tech_filtered = pd.DataFrame(technical_ledger)[pd.DataFrame(technical_ledger)['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
     st.dataframe(df_tech_filtered, use_container_width=True)
     
-    st.markdown("---")
-    st.subheader("🔥 Triple Conviction Matrix")
-    st.error("⚠️ CRITICAL ALIGNMENT DETECTED: Review Tier 3 Watchlist Targets Below")
-    
-    conviction_data = [
-        {"Level": "TRIPLE", "Insider Stream": "✅ Active", "Political Stream": "✅ Active", "Whale Stream": "✅ Active"},
-        {"Level": "TRIPLE", "Insider Stream": "✅ Active", "Political Stream": "✅ Active", "Whale Stream": "✅ Active"},
-        {"Level": "Double", "Insider Stream": "✅ Active", "Political Stream": "❌ No", "Whale Stream": "✅ Active"},
-        {"Level": "Single", "Insider Stream": "✅ Active", "Political Stream": "❌ No", "Whale Stream": "❌ No"}
-    ]
-    st.dataframe(pd.DataFrame(conviction_data).reset_index(drop=True), use_container_width=True)
-    
+    # 3. Relative Volume Outliers Matrix
     st.markdown("---")
     st.subheader("📊 Relative Volume Momentum (Volume > 20-day MA)")
     
