@@ -11,7 +11,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Global CSS Inject (Clean parameters to prevent Streamlit layout exceptions)
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; }
@@ -29,7 +28,6 @@ st.markdown("""
 st.sidebar.header("⚙️ Configuration")
 st.sidebar.success("🔑 SEC API Key loaded from Cloud Secrets.")
 
-# Lookback Window Slider
 lookback_days = st.sidebar.slider(
     label="Lookback Window (Days)",
     min_value=1,
@@ -37,7 +35,6 @@ lookback_days = st.sidebar.slider(
     value=90
 )
 
-# Active Watchlist Array (Enforcing complete item uniqueness to avoid Pandas index collisions)
 if 'watchlist' not in st.session_state:
     raw_watchlist = [
         "NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE", "MU", "AMD", "FN", 
@@ -46,7 +43,6 @@ if 'watchlist' not in st.session_state:
         "FLEX", "TTMI", "UMC", "GOOGL", "NUE", "NWPX", "CSCO", "GOOG", "STLD", 
         "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ"
     ]
-    # Keep list clean, sorted, and unique
     st.session_state.watchlist = sorted(list(set([t for t in raw_watchlist if t != "EZRA"])))
 
 # ==============================================================================
@@ -131,7 +127,8 @@ with tab1:
     st.subheader("Raw Insider Open-Market Activity Log")
     if not df_insiders.empty:
         df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
-        st.dataframe(df_filtered_insiders, use_container_width=True)
+        # FIXED: Upgraded layout engine argument to stretch safely
+        st.dataframe(df_filtered_insiders, width="stretch")
     else:
         st.info("Insider activity stream is currently empty.")
 
@@ -145,7 +142,7 @@ with tab2:
         df_poly_render = df_poly_filtered[df_poly_filtered['Ticker'].isin(st.session_state.watchlist)].sort_values(by="Filing Date", ascending=False).reset_index(drop=True)
         if not df_poly_render.empty:
             df_poly_render['Filing Date'] = df_poly_render['Filing Date'].dt.strftime('%Y-%m-%d')
-            st.dataframe(df_poly_render, use_container_width=True)
+            st.dataframe(df_poly_render, width="stretch")
         else:
             st.info(f"🚫 No matching political trade activity identified within the trailing {lookback_days} days.")
     else:
@@ -166,7 +163,7 @@ with tab3:
             df_whales['Change'].isin(flow_states) & 
             df_whales['Ticker'].isin(st.session_state.watchlist)
         ].reset_index(drop=True)
-        st.dataframe(df_whale_filtered, use_container_width=True)
+        st.dataframe(df_whale_filtered, width="stretch")
     else:
         st.info("No institutional block flows available.")
 
@@ -183,7 +180,6 @@ with tab4:
     
     matrix_rows = []
     
-    # Safely scan deduplicated watchlist tickers
     for ticker in sorted(list(set(st.session_state.watchlist))):
         has_insider = ticker in active_insider_buys
         has_politics = ticker in active_political_buys
@@ -203,11 +199,11 @@ with tab4:
     if matrix_rows:
         df_matrix = pd.DataFrame(matrix_rows).sort_values(by="Conviction Level", ascending=False).reset_index(drop=True)
         st.error("⚠️ AUTOMATED CROSS-STREAM CONVICTION ALIGNMENT DETECTED:")
-        st.dataframe(df_matrix, use_container_width=True)
+        st.dataframe(df_matrix, width="stretch")
     else:
         st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
 
-  # 2. Technical Floor Anchors
+    # 2. Technical Floor Anchors
     st.markdown("---")
     st.subheader("🎯 Entry Windows & Support Anchors")
     
@@ -222,4 +218,43 @@ with tab4:
     ]
     df_tech = pd.DataFrame(technical_ledger)
     df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
-    st.dataframe(df_tech_filtered, use_container_width=True)
+    st.dataframe(df_tech_filtered, width="stretch")
+    
+    # 3. Relative Volume Matrix
+    st.markdown("---")
+    st.subheader("📊 Relative Volume Momentum (Volume > 20-day MA)")
+    
+    volume_data = [
+        {"Ticker": "LITE", "Relative Vol (x)": "1.76x", "Flow State": "🔴 Distribution", "Status": "🔥 BREAKOUT"},
+        {"Ticker": "POWL", "Relative Vol (x)": "1.73x", "Flow State": "🔴 Distribution", "Status": "🔥 BREAKOUT"},
+        {"Ticker": "CSCO", "Relative Vol (x)": "1.64x", "Flow State": "🟢 Accumulation", "Status": "🔥 BREAKOUT"},
+        {"Ticker": "MSFT", "Relative Vol (x)": "1.46x", "Flow State": "🟢 Accumulation", "Status": "💤 Normal"},
+        {"Ticker": "FIX", "Relative Vol (x)": "1.37x", "Flow State": "🔴 Distribution", "Status": "💤 Normal"}
+    ]
+    st.dataframe(pd.DataFrame(volume_data), width="stretch")
+
+# ==============================================================================
+# TAB 5: WATCHLIST MANAGER
+# ==============================================================================
+with tab5:
+    st.header("Watchlist Manager")
+    
+    with st.form("add_ticker_form", clear_on_submit=True):
+        new_ticker = st.text_input("Enter Ticker Symbol:").upper().strip()
+        submit_btn = st.form_submit_button("➕ Add to Watchlist")
+        
+        if submit_btn and new_ticker:
+            if new_ticker == "EZRA":
+                st.toast("Holding block active: EZRA is explicitly barred from this model.", icon="🚫")
+            elif new_ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_ticker)
+                st.session_state.watchlist = sorted(list(set(st.session_state.watchlist)))
+                st.toast(f"Added {new_ticker} to dashboard indexing!", icon="✅")
+                st.rerun()
+
+    st.subheader("Currently Tracking:")
+    st.info(", ".join(st.session_state.watchlist))
+    
+    if st.button("🗑️ Reset Watchlist"):
+        st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "LITE", "POWL"]
+        st.rerun()
