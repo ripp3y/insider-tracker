@@ -11,11 +11,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Global CSS Inject (Clean and Safe)
+# Custom Global CSS Inject
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; }
     .stAlert { margin-top: 1rem; }
+    .metric-card {
+        background-color: #1e2430;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 5px solid #00ffcc;
+        margin-bottom: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -27,7 +34,7 @@ lookback_days = st.sidebar.slider(
     label="Lookback Window (Days)",
     min_value=1,
     max_value=90,
-    value=90  # Defaulted to 90 to display historical anomalies immediately
+    value=90
 )
 
 # Active Watchlist Array
@@ -40,6 +47,46 @@ if 'watchlist' not in st.session_state:
         "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ"
     ]
 
+# ==============================================================================
+# DATA INGESTION LAYER (Centralized for Cross-Referencing)
+# ==============================================================================
+# 1. Corporate Insiders Source
+fallback_insider_data = [
+    {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
+    {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
+    {"Filing Date": "2026-05-17", "Ticker": "FN", "Insider": "Apex Holdings", "Role": "Director"},
+    {"Filing Date": "2026-05-15", "Ticker": "ALB", "Insider": "Masters Eric", "Role": "Director"},
+    {"Filing Date": "2026-05-14", "Ticker": "FIX", "Insider": "Garner William", "Role": "VP / COO"},
+    {"Filing Date": "2026-05-12", "Ticker": "NVDA", "Insider": "Huang Jen-Hsun", "Role": "CEO"},
+    {"Filing Date": "2026-05-11", "Ticker": "MRVL", "Insider": "Murphy Matt", "Role": "CEO"},
+    {"Filing Date": "2026-05-11", "Ticker": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO"},
+    {"Filing Date": "2026-05-08", "Ticker": "POWL", "Insider": "Powell Brett", "Role": "Director"},
+    {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
+]
+try:
+    import data_store
+    if hasattr(data_store, 'get_insider_data'):
+        df_insiders = pd.DataFrame(data_store.get_insider_data(days=lookback_days))
+    else:
+        df_insiders = pd.DataFrame(fallback_insider_data)
+except Exception:
+    df_insiders = pd.DataFrame(fallback_insider_data)
+
+df_insiders = df_insiders.reset_index(drop=True)
+
+# 2. Whales Source
+whale_data = [
+    {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
+    {"Ticker": "INTC", "Whale/Fund": "BlackRock Inc.", "Type": "13F", "Change": "Accumulation"},
+    {"Ticker": "ALB", "Whale/Fund": "Coatue Management", "Type": "13G (Passive)", "Change": "Reduction"},
+    {"Ticker": "MRVL", "Whale/Fund": "Point72 Asset Mgmt", "Type": "13D (Active)", "Change": "Material Buy"},
+    {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
+    {"Ticker": "NVDA", "Whale/Fund": "Renaissance Technologies", "Type": "13F", "Change": "Reduction"},
+    {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"}
+]
+df_whales = pd.DataFrame(whale_data).reset_index(drop=True)
+
+
 # Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏢 Insiders", 
@@ -50,52 +97,64 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ==============================================================================
-# TAB 1: CORPORATE INSIDERS
+# TAB 1: CORPORATE INSIDERS & AUTOMATED CLUSTER MATCH ENGINE
 # ==============================================================================
 with tab1:
     st.header("Corporate Insiders")
     
-    try:
-        import data_store
-        
-        if hasattr(data_store, 'get_insider_data'):
-            raw_data = data_store.get_insider_data(days=lookback_days)
-        elif hasattr(data_store, 'get_clean_data'):
-            raw_data, _, _ = data_store.get_clean_data()
-        else:
-            raise AttributeError("Could not find data retrieval method.")
-            
-        df_insiders = pd.DataFrame(raw_data)
-        
-    except (ModuleNotFoundError, AttributeError, ValueError):
-        fallback_insider_data = [
-            {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
-            {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
-            {"Filing Date": "2026-05-17", "Ticker": "FN", "Insider": "Apex Holdings", "Role": "Director"},
-            {"Filing Date": "2026-05-15", "Ticker": "ALB", "Insider": "Masters Eric", "Role": "Director"},
-            {"Filing Date": "2026-05-14", "Ticker": "FIX", "Insider": "Garner William", "Role": "VP / COO"},
-            {"Filing Date": "2026-05-12", "Ticker": "NVDA", "Insider": "Huang Jen-Hsun", "Role": "CEO"},
-            {"Filing Date": "2026-05-11", "Ticker": "MRVL", "Insider": "Murphy Matt", "Role": "CEO"},
-            {"Filing Date": "2026-05-11", "Ticker": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO"},
-            {"Filing Date": "2026-05-08", "Ticker": "POWL", "Insider": "Powell Brett", "Role": "Director"},
-            {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
-        ]
-        df_insiders = pd.DataFrame(fallback_insider_data)
+    # --------------------------------------------------------------------------
+    # NEW: AUTOMATED WHALE / INSIDER MATCH MATRIX
+    # --------------------------------------------------------------------------
+    st.subheader("🎯 Live Cluster Intensity Matches")
+    st.caption("Automatically scanning for active tickers where both corporate insiders and 13F/D/G institutional whales are accumulation buyers simultaneously.")
 
-    if not df_insiders.empty:
-        df_insiders = df_insiders.reset_index(drop=True)
-        df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
-        st.dataframe(df_filtered_insiders, use_container_width=True)
+    # Calculate overlaps dynamically
+    insider_tickers = set(df_insiders['Ticker'].unique())
+    
+    # Filter whales down to positive accumulation signals only
+    positive_whales = df_whales[df_whales['Change'].isin(["Accumulation", "Material Buy"])]
+    whale_tickers = set(positive_whales['Ticker'].unique())
+    
+    # Intersect both with active watchlist
+    cluster_targets = insider_tickers.intersection(whale_tickers).intersection(set(st.session_state.watchlist))
+    
+    if cluster_targets:
+        cols = st.columns(len(cluster_targets) if len(cluster_targets) <= 4 else 4)
+        for idx, ticker in enumerate(sorted(cluster_targets)):
+            col_target = cols[idx % 4]
+            
+            # Count individual occurrences to determine cluster strength
+            insider_count = len(df_insiders[df_insiders['Ticker'] == ticker])
+            whale_count = len(positive_whales[positive_whales['Ticker'] == ticker])
+            density_score = insider_count + whale_count
+            
+            with col_target:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h3 style='margin:0; color:#00ffcc;'>🔥 {ticker}</h3>
+                    <p style='margin:5px 0 0 0; font-size:14px; color:#b0c4de;'>
+                        Cluster Density Score: <b>{density_score}</b><br>
+                        • Insiders Actively Buying: <b>{insider_count}</b><br>
+                        • Institutional Funds Buying: <b>{whale_count}</b>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
     else:
-        st.info("No tracking matrix rows available.")
+        st.info("No concurrent insider cluster overlaps discovered in the current lookback window configuration.")
+        
+    st.markdown("---")
+    st.subheader("Raw Insider Open-Market Activity Log")
+    
+    # Render main insider filtered frame safely
+    df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
+    st.dataframe(df_filtered_insiders, use_container_width=True)
 
 # ==============================================================================
-# TAB 2: POLITICAL TRADES (UPDATED WITH DYNAMIC TIME-AWARE LOOKBACK)
+# TAB 2: POLITICAL TRADES
 # ==============================================================================
 with tab2:
     st.header("Political Trades")
     
-    # Expanded database ledger including historical structural asymmetries
     political_data = [
         {"Filing Date": "2026-05-14", "Ticker": "NVDA", "Politician": "Pelosi Nancy", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
         {"Filing Date": "2026-05-12", "Ticker": "INTC", "Politician": "Tuberville Tommy", "Chamber": "Senate", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
@@ -107,26 +166,21 @@ with tab2:
     ]
     
     df_poly = pd.DataFrame(political_data)
-    
-    # 1. Standardize and cleanly convert to datetime object
     df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
     
-    # 2. Calculate dynamic window cutoff using fixed evaluation target date (May 25, 2026)
     current_date = pd.to_datetime("2026-05-25")
     cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
     
-    # 3. Apply Dual Constraints: Must be on Watchlist AND within the selected slider timeline
     df_poly_filtered = df_poly[
         (df_poly['Ticker'].isin(st.session_state.watchlist)) & 
         (df_poly['Filing Date'] >= cutoff_date)
     ].sort_values(by="Filing Date", ascending=False).reset_index(drop=True)
     
-    # 4. Format dates back to legible strings for UI presentation
     if not df_poly_filtered.empty:
         df_poly_filtered['Filing Date'] = df_poly_filtered['Filing Date'].dt.strftime('%Y-%m-%d')
         st.dataframe(df_poly_filtered, use_container_width=True)
     else:
-        st.info(f"🚫 No matching political trade activity identified for watched tickers within the trailing {lookback_days} days.")
+        st.info(f"🚫 No matching political trade activity identified within the trailing {lookback_days} days.")
 
 # ==============================================================================
 # TAB 3: INSTITUTIONAL WHALE BLOCKS
@@ -143,20 +197,15 @@ with tab3:
     flow_states = st.multiselect(
         "Filter Flow State:",
         ["Accumulation", "Reduction", "Material Buy", "Disposal"],
-        default=["Accumulation", "Reduction"]
+        default=["Accumulation", "Reduction", "Material Buy"]
     )
 
-    whale_data = [
-        {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "INTC", "Whale/Fund": "BlackRock Inc.", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "ALB", "Whale/Fund": "Coatue Management", "Type": "13G (Passive)", "Change": "Reduction"},
-        {"Ticker": "MRVL", "Whale/Fund": "Point72 Asset Mgmt", "Type": "13D (Active)", "Change": "Material Buy"},
-        {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "NVDA", "Whale/Fund": "Renaissance Technologies", "Type": "13F", "Change": "Reduction"},
-        {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"}
-    ]
-    df_whales = pd.DataFrame(whale_data)
-    df_whale_filtered = df_whales[df_whales['Type'].isin(fund_types) & df_whales['Change'].isin(flow_states)].reset_index(drop=True)
+    df_whale_filtered = df_whales[
+        df_whales['Type'].isin(fund_types) & 
+        df_whales['Change'].isin(flow_states) & 
+        df_whales['Ticker'].isin(st.session_state.watchlist)
+    ].reset_index(drop=True)
+    
     st.dataframe(df_whale_filtered, use_container_width=True)
 
 # ==============================================================================
