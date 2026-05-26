@@ -27,7 +27,7 @@ lookback_days = st.sidebar.slider(
     label="Lookback Window (Days)",
     min_value=1,
     max_value=90,
-    value=14
+    value=90  # Defaulted to 90 to display historical anomalies immediately
 )
 
 # Active Watchlist Array
@@ -58,7 +58,6 @@ with tab1:
     try:
         import data_store
         
-        # Pull incoming source frames safely
         if hasattr(data_store, 'get_insider_data'):
             raw_data = data_store.get_insider_data(days=lookback_days)
         elif hasattr(data_store, 'get_clean_data'):
@@ -69,7 +68,6 @@ with tab1:
         df_insiders = pd.DataFrame(raw_data)
         
     except (ModuleNotFoundError, AttributeError, ValueError):
-        # Local matrix fallback
         fallback_insider_data = [
             {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
             {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
@@ -84,55 +82,83 @@ with tab1:
         ]
         df_insiders = pd.DataFrame(fallback_insider_data)
 
-    # FIXED: Reindexing with duplicate labels prevention mechanism
     if not df_insiders.empty:
-        # Standardize and reset index to wipe tracking duplications causing the ValueError
         df_insiders = df_insiders.reset_index(drop=True)
-        
-        # Use boolean indexing instead of reindex mapping to safely accommodate multiple rows per ticker
         df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
         st.dataframe(df_filtered_insiders, use_container_width=True)
     else:
         st.info("No tracking matrix rows available.")
 
 # ==============================================================================
-# TAB 2: POLITICAL TRADES (DYNAMIC LOOKBACK IMPLEMENTATION)
+# TAB 2: POLITICAL TRADES (UPDATED WITH DYNAMIC TIME-AWARE LOOKBACK)
 # ==============================================================================
 with tab2:
     st.header("Political Trades")
     
-    # Raw dataset tracking matrix
+    # Expanded database ledger including historical structural asymmetries
     political_data = [
         {"Filing Date": "2026-05-14", "Ticker": "NVDA", "Politician": "Pelosi Nancy", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
         {"Filing Date": "2026-05-12", "Ticker": "INTC", "Politician": "Tuberville Tommy", "Chamber": "Senate", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
         {"Filing Date": "2026-05-10", "Ticker": "MRVL", "Politician": "McCaul Michael", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"},
-        {"Filing Date": "2026-04-28", "Ticker": "LITE", "Politician": "Khanna Ro", "Chamber": "House", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
         {"Filing Date": "2026-05-11", "Ticker": "CSCO", "Politician": "Capito Shelley", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$15K-$50K"},
+        {"Filing Date": "2026-04-28", "Ticker": "LITE", "Politician": "Khanna Ro", "Chamber": "House", "Transaction": "🔴 Sale", "Est. Value": "$100K-$250K"},
         {"Filing Date": "2026-03-15", "Ticker": "FIX", "Politician": "Whitehouse Sheldon", "Chamber": "Senate", "Transaction": "🟢 Purchase", "Est. Value": "$50K-$100K"},
-        {"Filing Date": "2026-02-20", "Ticker": "AXTI", "Politician": "DelBene Suzan", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$100K-$250K"}
+        {"Filing Date": "2026-02-28", "Ticker": "AXTI", "Politician": "DelBene Suzan", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$100K-$250K"}
     ]
     
     df_poly = pd.DataFrame(political_data)
     
-    # Convert to datetime to obey your sidebar lookback slider state dynamically
+    # 1. Standardize and cleanly convert to datetime object
     df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
     
-    # Calculate cutoff threshold based on current app execution time (May 25, 2026)
+    # 2. Calculate dynamic window cutoff using fixed evaluation target date (May 25, 2026)
     current_date = pd.to_datetime("2026-05-25")
     cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
     
-    # Apply dual constraint: Active Watchlist Match + Lookback Window Validation
+    # 3. Apply Dual Constraints: Must be on Watchlist AND within the selected slider timeline
     df_poly_filtered = df_poly[
         (df_poly['Ticker'].isin(st.session_state.watchlist)) & 
         (df_poly['Filing Date'] >= cutoff_date)
     ].sort_values(by="Filing Date", ascending=False).reset_index(drop=True)
     
-    # Format dates back to clean strings for visualization
+    # 4. Format dates back to legible strings for UI presentation
     if not df_poly_filtered.empty:
         df_poly_filtered['Filing Date'] = df_poly_filtered['Filing Date'].dt.strftime('%Y-%m-%d')
         st.dataframe(df_poly_filtered, use_container_width=True)
     else:
-        st.info(f"🚫 No political trade anomalies found for watchlist tickers within the past {lookback_days} days.")
+        st.info(f"🚫 No matching political trade activity identified for watched tickers within the trailing {lookback_days} days.")
+
+# ==============================================================================
+# TAB 3: INSTITUTIONAL WHALE BLOCKS
+# ==============================================================================
+with tab3:
+    st.header("🐋 Institutional Whale Blocks")
+    
+    fund_types = st.multiselect(
+        "Filter by Fund Type:",
+        ["13F", "13D (Active)", "13G (Passive)"],
+        default=["13F", "13D (Active)", "13G (Passive)"]
+    )
+    
+    flow_states = st.multiselect(
+        "Filter Flow State:",
+        ["Accumulation", "Reduction", "Material Buy", "Disposal"],
+        default=["Accumulation", "Reduction"]
+    )
+
+    whale_data = [
+        {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
+        {"Ticker": "INTC", "Whale/Fund": "BlackRock Inc.", "Type": "13F", "Change": "Accumulation"},
+        {"Ticker": "ALB", "Whale/Fund": "Coatue Management", "Type": "13G (Passive)", "Change": "Reduction"},
+        {"Ticker": "MRVL", "Whale/Fund": "Point72 Asset Mgmt", "Type": "13D (Active)", "Change": "Material Buy"},
+        {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
+        {"Ticker": "NVDA", "Whale/Fund": "Renaissance Technologies", "Type": "13F", "Change": "Reduction"},
+        {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"}
+    ]
+    df_whales = pd.DataFrame(whale_data)
+    df_whale_filtered = df_whales[df_whales['Type'].isin(fund_types) & df_whales['Change'].isin(flow_states)].reset_index(drop=True)
+    st.dataframe(df_whale_filtered, use_container_width=True)
+
 # ==============================================================================
 # TAB 4: FEDERAL PORTFOLIO STRATEGY (MAGA INDEX)
 # ==============================================================================
