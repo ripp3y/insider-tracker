@@ -100,7 +100,7 @@ with tab0:
     
     df_portfolio = data_store.get_live_portfolio_positions()
     
-    # Calculate account summaries accurately including structural cash assets
+    # Calculate account summaries accurately including structural cash assets ($79.41 in HSA, $1.09 in B-Link)
     hsa_total = df_portfolio[df_portfolio["Account"] == "HSA"]["Total Value"].sum() + 79.41
     blink_total = df_portfolio[df_portfolio["Account"] == "BrokerageLink"]["Total Value"].sum() + 1.09
     blink_gain = df_portfolio[df_portfolio["Account"] == "BrokerageLink"]["Total Gain ($)"].sum()
@@ -110,7 +110,7 @@ with tab0:
     with col_a:
         st.metric(label="📊 BrokerageLink Balance", value=f"${blink_total:,.2f}", delta=f"+${blink_gain:,.2f} Un/Realized")
     with col_b:
-        st.metric(label="🏥 HSA Balance", value=f"${hsa_total:,.2f}", delta=f"${hsa_gain:+,.2f} Gain")
+        st.metric(label="🏥 HSA Balance", value=f"${hsa_total:,.2f}", delta=f"${hsa_gain:+,.2f} Total Return")
     with col_c:
         st.metric(label="📦 Combined Alpha Assets", value=f"${(blink_total + hsa_total):,.2f}")
         
