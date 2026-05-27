@@ -2,22 +2,25 @@ import pandas as pd
 import requests
 import yfinance as yf
 import streamlit as st
+import os
 from datetime import datetime
+
+# Prevent yfinance from causing concurrent SQLite database locks in Streamlit Cloud
+os.environ["YFINANCE_CACHE"] = "FALSE"
 
 @st.cache_data(ttl=300)  # 5-minute cache window for maximum speed
 def fetch_live_market_prices(tickers):
     """
-    Worker function to fetch current prices safely from yfinance with clean series handling.
+    Worker function to fetch current prices safely from yfinance with strict threading controls.
     """
     try:
         ticker_list = list(tickers) if not isinstance(tickers, list) else tickers
         if not ticker_list:
             return {}
         
-        # Download 1-day interval close
-        data = yf.download(ticker_list, period="1d", progress=False)
+        # Download 1-day close without multi-threading to prevent SQLite collisions
+        data = yf.download(ticker_list, period="1d", progress=False, threads=False)
         
-        # Safe extraction handles both multi-ticker DataFrames and single-ticker Series
         if "Close" in data.columns:
             close_data = data["Close"].iloc[-1]
         else:
@@ -32,8 +35,8 @@ def fetch_live_market_prices(tickers):
 
 def get_live_portfolio_positions():
     """
-    Returns the mathematically exact position ledger matching live brokerage statements,
-    completely independent of shared ticker structural overlaps.
+    Returns the mathematically exact position ledger matching live brokerage statements.
+    Fallbacks match true historical balances to handle API rate limiting.
     """
     portfolio_ledger = [
         # --- HEALTH SAVINGS ACCOUNT (HSA) ---
@@ -56,11 +59,12 @@ def get_live_portfolio_positions():
     unique_tickers = list(df["Ticker"].unique())
     price_map = fetch_live_market_prices(unique_tickers)
     
-    # Statement fallbacks if the external connection encounters api throttling
+    # EXACT STATEMENT PRICE FALLBACKS (Used if Yahoo Finance rate-limits our cloud server)
     fallbacks = {
-        "CIEN": 602.39, "FIX": 1883.56, "WOLF": 73.50, "AXTI": 132.60, 
-        "BE": 302.40, "LITE": 910.81, "MRVL": 208.26, "POWL": 291.97, 
-        "SNDK": 1589.55, "STX": 845.76
+        "CIEN": 602.39,   "FIX": 1883.56,  "WOLF": 73.50, 
+        "AXTI": 132.60,   "BE": 302.40,    "LITE": 910.81, 
+        "MRVL": 208.26,   "POWL": 291.97,  "SNDK": 1589.55, 
+        "STX": 845.76
     }
     
     # Complete row-by-row mapping to fully prevent overlapping collisions
@@ -76,15 +80,14 @@ def get_live_portfolio_positions():
 @st.cache_data(ttl=600)  # 10-minute cache for moving average historical data arrays
 def get_live_technicals(watchlist):
     """
-    Downloads historical trends, processes mathematical EMAs dynamically,
-    and isolates structural support setup classifications for monitored watchlists.
+    Downloads historical trends safely without multi-thread crashes.
     """
     technical_rows = []
     if not watchlist:
         return pd.DataFrame()
         
     try:
-        history = yf.download(list(watchlist), period="3mo", progress=False)["Close"]
+        history = yf.download(list(watchlist), period="3mo", progress=False, threads=False)["Close"]
         
         for ticker in watchlist:
             if len(watchlist) == 1:
@@ -165,6 +168,4 @@ def get_live_whale_blocks():
         {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
         {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
         {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "UMC", "Whale/Fund": "Susquehanna Int.", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "WOLF", "Whale/Fund": "Jana Partners", "Type": "13D (Active)", "Change": "Accumulation"}
-    ])
+        {"Ticker": "UMC", "Whale/Fund": "Susquehanna Int.", "Type": "
