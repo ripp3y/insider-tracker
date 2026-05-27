@@ -137,4 +137,17 @@ with tab2:
                 st.bar_chart(ticker_counts.set_index("Ticker"), y="Filings Volume", color="#3b82f6")
                 
             with v2:
-                st.dataframe(df_insider, width
+                # FIXED: Cleanly closed parameter termination to resolve compiler crash
+                st.dataframe(df_insider, width="stretch", hide_index=True)
+        else:
+            st.info("No active corporate insider filings detected inside lookback window.")
+    except Exception as e:
+        st.error(f"Insider pipeline unresolved: {e}")
+
+# TAB 3: CONGRESSIONAL DATA CAPTURE
+with tab3:
+    st.subheader("🏛️ Capital Hill Policy Trade Disclosures")
+    try:
+        df_politics = data_store.get_live_political_trades()
+        if not df_politics.empty:
+            p1, p2 = st
