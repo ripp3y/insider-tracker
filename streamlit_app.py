@@ -137,7 +137,6 @@ with tab2:
                 st.bar_chart(ticker_counts.set_index("Ticker"), y="Filings Volume", color="#3b82f6")
                 
             with v2:
-                # FIXED: Cleanly closed parameter termination to resolve compiler crash
                 st.dataframe(df_insider, width="stretch", hide_index=True)
         else:
             st.info("No active corporate insider filings detected inside lookback window.")
@@ -150,4 +149,25 @@ with tab3:
     try:
         df_politics = data_store.get_live_political_trades()
         if not df_politics.empty:
-            p1, p2 = st
+            p1, p2 = st.columns([2, 1])
+            with p1:
+                st.dataframe(df_politics, width="stretch", hide_index=True)
+            with p2:
+                st.markdown("##### Trade Signage Velocity")
+                flow_counts = df_politics["Transaction"].value_counts().reset_index()
+                flow_counts.columns = ["Direction", "Count"]
+                st.bar_chart(flow_counts.set_index("Direction"), y="Count", color="#10b981")
+        else:
+            st.info("No policy-maker transactions recorded in current queue window.")
+    except Exception as e:
+        st.error(f"Political tracking data feed timed out: {e}")
+
+# TAB 4: LARGE-VOLUME WHALE ASSIGNMENTS
+with tab4:
+    st.subheader("🐋 Institutional Whale Block Transcripts")
+    
+    f1, f2 = st.columns(2)
+    with f1:
+        st.multiselect("Filter by Fund Type:", ["13F", "13D (Active)", "13G (Passive)"], default=["13F", "13D (Active)", "13G (Passive)"])
+    with f2:
+        st.multiselect("Filter Flow State:",
