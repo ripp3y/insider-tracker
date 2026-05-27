@@ -5,20 +5,20 @@ import streamlit as st
 import os
 from datetime import datetime
 
-# Prevent yfinance from causing concurrent SQLite database locks in Streamlit Cloud
+# Block concurrent background tracking files from throwing SQLite database lock errors
 os.environ["YFINANCE_CACHE"] = "FALSE"
 
-@st.cache_data(ttl=300)  # 5-minute cache window for maximum speed
+@st.cache_data(ttl=300)
 def fetch_live_market_prices(tickers):
     """
-    Worker function to fetch current prices safely from yfinance with strict threading controls.
+    Safely queries yfinance 1-day interval targets using linear single-thread requests.
     """
     try:
         ticker_list = list(tickers) if not isinstance(tickers, list) else tickers
         if not ticker_list:
             return {}
         
-        # Download 1-day close without multi-threading to prevent SQLite collisions
+        # Enforce threads=False to completely isolate data reads from thread contentions
         data = yf.download(ticker_list, period="1d", progress=False, threads=False)
         
         if "Close" in data.columns:
@@ -35,8 +35,7 @@ def fetch_live_market_prices(tickers):
 
 def get_live_portfolio_positions():
     """
-    Returns the mathematically exact position ledger matching live brokerage statements.
-    Fallbacks match true historical balances to handle API rate limiting.
+    Main positions matrix mapping real ledger structures to eliminate ticker parsing collisions.
     """
     portfolio_ledger = [
         # --- HEALTH SAVINGS ACCOUNT (HSA) ---
@@ -59,7 +58,7 @@ def get_live_portfolio_positions():
     unique_tickers = list(df["Ticker"].unique())
     price_map = fetch_live_market_prices(unique_tickers)
     
-    # EXACT STATEMENT PRICE FALLBACKS (Used if Yahoo Finance rate-limits our cloud server)
+    # Air-gapped fallbacks taken directly from statement baselines to bypass server tracking blockades
     fallbacks = {
         "CIEN": 602.39,   "FIX": 1883.56,  "WOLF": 73.50, 
         "AXTI": 132.60,   "BE": 302.40,    "LITE": 910.81, 
@@ -67,20 +66,18 @@ def get_live_portfolio_positions():
         "STX": 845.76
     }
     
-    # Complete row-by-row mapping to fully prevent overlapping collisions
     df["Current Price"] = df["Ticker"].apply(lambda t: float(price_map.get(t, fallbacks.get(t, 0.0))))
     df["Total Value"] = df["Shares"] * df["Current Price"]
     df["Cost Basis Total"] = df["Shares"] * df["Cost Basis"]
     df["Total Gain ($)"] = df["Total Value"] - df["Cost Basis Total"]
     df["Total Gain (%)"] = (df["Total Gain ($)"] / df["Cost Basis Total"]) * 100
     
-    # Sort cleanly by total portfolio weight allocation
     return df.sort_values(by="Total Value", ascending=False).reset_index(drop=True)
 
-@st.cache_data(ttl=600)  # 10-minute cache for moving average historical data arrays
+@st.cache_data(ttl=600)
 def get_live_technicals(watchlist):
     """
-    Downloads historical trends safely without multi-thread crashes.
+    Builds baseline EMA cross momentum matrices for custom tracked targets.
     """
     technical_rows = []
     if not watchlist:
@@ -88,7 +85,6 @@ def get_live_technicals(watchlist):
         
     try:
         history = yf.download(list(watchlist), period="3mo", progress=False, threads=False)["Close"]
-        
         for ticker in watchlist:
             if len(watchlist) == 1:
                 series = history.dropna()
@@ -121,51 +117,4 @@ def get_live_technicals(watchlist):
         
     if technical_rows:
         return pd.DataFrame(technical_rows)
-    return pd.DataFrame(columns=["Ticker", "Last Price", "21-day EMA", "50-day EMA", "Technical Setup"])
-
-def get_insider_data(days=90):
-    return [
-        {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
-        {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
-        {"Filing Date": "2026-05-17", "Ticker": "FN", "Insider": "Apex Holdings", "Role": "Director"},
-        {"Filing Date": "2026-05-15", "Ticker": "ALB", "Insider": "Masters Eric", "Role": "Director"},
-        {"Filing Date": "2026-05-14", "Ticker": "FIX", "Insider": "Garner William", "Role": "VP / COO"},
-        {"Filing Date": "2026-05-12", "Ticker": "NVDA", "Insider": "Huang Jen-Hsun", "Role": "CEO"},
-        {"Filing Date": "2026-05-11", "Ticker": "MRVL", "Insider": "Murphy Matt", "Role": "CEO"},
-        {"Filing Date": "2026-05-11", "Ticker": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO"},
-        {"Filing Date": "2026-05-08", "Ticker": "POWL", "Insider": "Powell Brett", "Role": "Director"},
-        {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
-    ]
-
-@st.cache_data(ttl=1800)
-def get_live_political_trades():
-    headers = {"User-Agent": "Mozilla/5.0"}
-    formatted_trades = []
-    try:
-        house_resp = requests.get("https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json", headers=headers, timeout=8)
-        if house_resp.status_code == 200:
-            for t in house_resp.json()[-100:]:
-                ticker = str(t.get("ticker", "")).upper().strip()
-                if ticker and ticker != "N/A":
-                    formatted_trades.append({
-                        "Filing Date": t.get("disclosure_date", datetime.today().strftime('%Y-%m-%d')),
-                        "Ticker": ticker,
-                        "Politician": t.get("representative", "Unknown Representative"),
-                        "Chamber": "House",
-                        "Transaction": "🟢 Purchase" if "purchase" in str(t.get("type", "")).lower() else "🔴 Sale",
-                        "Est. Value": t.get("amount", "Unknown")
-                    })
-    except Exception:
-        pass
-    if formatted_trades: 
-        return pd.DataFrame(formatted_trades)
-    return pd.DataFrame([
-        {"Filing Date": "2026-05-14", "Ticker": "NVDA", "Politician": "Pelosi Nancy", "Chamber": "House", "Transaction": "🟢 Purchase", "Est. Value": "$500K-$1M"}
-    ])
-
-def get_live_whale_blocks():
-    return pd.DataFrame([
-        {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "LITE", "Whale/Fund": "Millennium Management", "Type": "13F", "Change": "Accumulation"},
-        {"Ticker": "UMC", "Whale/Fund": "Susquehanna Int.", "Type": "
+    return pd.DataFrame(columns=
