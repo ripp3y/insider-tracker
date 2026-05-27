@@ -221,8 +221,8 @@ with tab4:
     st.markdown("---")
     st.subheader("🎯 Entry Windows & Support Anchors (Live Calculations)")
     
-    with st.spinner("Calculating live technical moving averages..."):
-        df_tech_live = data_store.get_live_technicals(st.session_state.watchlist)
+    # Run technical EMA analysis safely with cached data loaders
+    df_tech_live = data_store.get_live_technicals(st.session_state.watchlist)
         
     if not df_tech_live.empty:
         st.dataframe(df_tech_live, width="stretch")
