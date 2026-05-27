@@ -40,14 +40,8 @@ lookback_days = st.sidebar.slider(
 )
 
 if 'watchlist' not in st.session_state:
-    raw_watchlist = [
-        "NVDA", "MRVL", "FIX", "ALB", "LITE", "MU", "AMD", "FN", 
-        "TSEM", "STX", "SNDK", "CEIN", "LRCX", "WDC", "ASX", "AXTI", "GLW", 
-        "TXN", "C3NX", "CENX", "EFXT", "STRL", "MYRG", "COHR", "VICR", "SIMO", 
-        "FLEX", "TTMI", "UMC", "GOOGL", "NUE", "NWPX", "CSCO", "GOOG", "STLD", 
-        "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ", "WOLF", "NXPI", "NVTS", "CIEN"
-    ]
-    st.session_state.watchlist = sorted(list(set([t for t in raw_watchlist if t != "EZRA"])))
+    raw_watchlist = ["NVDA", "MRVL", "FIX", "LITE", "POWL", "STX", "SNDK", "AXTI", "BE", "WOLF", "CIEN"]
+    st.session_state.watchlist = sorted(list(set(raw_watchlist)))
 
 # ==============================================================================
 # 3. DATA INGESTION & STANDARDIZATION
@@ -86,11 +80,11 @@ tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ==============================================================================
-# TAB 0: PORTFOLIO Tracker (Snaps straight to statement balances)
+# TAB 0: PORTFOLIO TRACKER
 # ==============================================================================
 with tab0:
     st.header("🦅 Asymmetry Portfolio Tracker")
-    st.caption("Live asset exposure maps across corporate structures tracking raw cost cushions.")
+    st.caption("Live asset exposure maps updating automatically via yfinance ticker feeds.")
     
     df_portfolio = data_store.get_live_portfolio_positions()
     
@@ -225,23 +219,15 @@ with tab4:
         st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
 
     st.markdown("---")
-    st.subheader("🎯 Entry Windows & Support Anchors")
+    st.subheader("🎯 Entry Windows & Support Anchors (Live Calculations)")
     
-    technical_ledger = [
-        {"Ticker": "LITE", "Last Price": "$910.81", "21-day EMA": "$892.20", "50-day EMA": "$850.00", "Technical Setup": "🔥 Breakout"},
-        {"Ticker": "POWL", "Last Price": "$291.97", "21-day EMA": "$284.40", "50-day EMA": "$265.00", "Technical Setup": "🔥 Breakout"},
-        {"Ticker": "FIX", "Last Price": "$1,883.56", "21-day EMA": "$1,841.50", "50-day EMA": "$1,795.00", "Technical Setup": "🟢 Entry Zone"},
-        {"Ticker": "MRVL", "Last Price": "$208.26", "21-day EMA": "$198.10", "50-day EMA": "$185.00", "Technical Setup": "💤 Premium / Hold"},
-        {"Ticker": "STX", "Last Price": "$845.76", "21-day EMA": "$814.20", "50-day EMA": "$790.10", "Technical Setup": "💤 Premium / Hold"},
-        {"Ticker": "SNDK", "Last Price": "$1,589.55", "21-day EMA": "$1,510.00", "50-day EMA": "$1,442.30", "Technical Setup": "💤 Premium / Hold"},
-        {"Ticker": "AXTI", "Last Price": "$132.60", "21-day EMA": "$128.00", "50-day EMA": "$121.20", "Technical Setup": "💤 Premium / Hold"},
-        {"Ticker": "BE", "Last Price": "$302.40", "21-day EMA": "$295.05", "50-day EMA": "$288.50", "Technical Setup": "🟢 Entry Zone"},
-        {"Ticker": "WOLF", "Last Price": "$73.50", "21-day EMA": "$71.49", "50-day EMA": "$68.76", "Technical Setup": "🔥 Breakout"},
-        {"Ticker": "CIEN", "Last Price": "$602.39", "21-day EMA": "$585.00", "50-day EMA": "$560.00", "Technical Setup": "🟢 Entry Zone"}
-    ]
-    df_tech = pd.DataFrame(technical_ledger)
-    df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
-    st.dataframe(df_tech_filtered, width="stretch")
+    with st.spinner("Calculating live technical moving averages..."):
+        df_tech_live = data_store.get_live_technicals(st.session_state.watchlist)
+        
+    if not df_tech_live.empty:
+        st.dataframe(df_tech_live, width="stretch")
+    else:
+        st.warning("Unable to fetch live historical technical matrices currently.")
 
 # ==============================================================================
 # TAB 5: WATCHLIST MANAGER
@@ -253,9 +239,7 @@ with tab5:
         submit_btn = st.form_submit_button("➕ Add to Watchlist")
         
         if submit_btn and new_ticker:
-            if new_ticker == "EZRA":
-                st.toast("Holding block active: EZRA is explicitly barred from this model.", icon="🚫")
-            elif new_ticker not in st.session_state.watchlist:
+            if new_ticker not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker)
                 st.session_state.watchlist = sorted(list(set(st.session_state.watchlist)))
                 st.toast(f"Added {new_ticker} to dashboard indexing!", icon="✅")
@@ -265,5 +249,5 @@ with tab5:
     st.info(", ".join(st.session_state.watchlist))
     
     if st.button("🗑️ Reset Watchlist"):
-        st.session_state.watchlist = ["NVDA", "MRVL", "FIX", "LITE", "POWL"]
+        st.session_state.watchlist = ["NVDA", "MRVL", "FIX", "LITE", "POWL", "STX", "SNDK", "AXTI", "BE", "WOLF", "CIEN"]
         st.rerun()
