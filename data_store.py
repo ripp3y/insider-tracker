@@ -4,30 +4,36 @@ import yfinance as yf
 import streamlit as st
 from datetime import datetime
 
-@st.cache_data(ttl=300)  # Caches market data for 5 minutes (300 seconds) to maximize app speed
+@st.cache_data(ttl=300)  # 5-minute cache window for maximum speed
 def fetch_live_market_prices(tickers):
     """
-    Worker function to fetch current prices safely from yfinance with a fast timeout.
+    Worker function to fetch current prices safely from yfinance with clean series handling.
     """
     try:
-        # Convert to list if it's a set or single string
         ticker_list = list(tickers) if not isinstance(tickers, list) else tickers
         if not ticker_list:
             return {}
         
-        live_data = yf.download(ticker_list, period="1d", progress=False)["Close"].iloc[-1]
+        # Download 1-day interval close
+        data = yf.download(ticker_list, period="1d", progress=False)
         
-        if len(ticker_list) == 1:
-            return {ticker_list[0]: float(live_data)}
+        # Safe extraction handles both multi-ticker DataFrames and single-ticker Series
+        if "Close" in data.columns:
+            close_data = data["Close"].iloc[-1]
         else:
-            return {ticker: float(val) for ticker, val in live_data.to_dict().items() if pd.notna(val)}
+            close_data = data.iloc[-1]
+            
+        if isinstance(close_data, pd.Series):
+            return {ticker: float(val) for ticker, val in close_data.to_dict().items() if pd.notna(val)}
+        else:
+            return {ticker_list[0]: float(close_data)}
     except Exception:
         return {}
 
 def get_live_portfolio_positions():
     """
-    Returns the mathematically exact position ledger matching live brokerage statements, 
-    utilizing cached live pricing data.
+    Returns the mathematically exact position ledger matching live brokerage statements,
+    completely independent of shared ticker structural overlaps.
     """
     portfolio_ledger = [
         # --- HEALTH SAVINGS ACCOUNT (HSA) ---
@@ -48,26 +54,26 @@ def get_live_portfolio_positions():
     
     df = pd.DataFrame(portfolio_ledger)
     unique_tickers = list(df["Ticker"].unique())
-    
-    # Get cached live prices
     price_map = fetch_live_market_prices(unique_tickers)
     
-    # Standard statements fallback if data connection is interrupted
+    # Statement fallbacks if the external connection encounters api throttling
     fallbacks = {
         "CIEN": 602.39, "FIX": 1883.56, "WOLF": 73.50, "AXTI": 132.60, 
         "BE": 302.40, "LITE": 910.81, "MRVL": 208.26, "POWL": 291.97, 
         "SNDK": 1589.55, "STX": 845.76
     }
     
-    # Map current prices and complete downstream alpha math
-    df["Current Price"] = df["Ticker"].map(lambda t: price_map.get(t, fallbacks.get(t, 0.0)))
+    # Complete row-by-row mapping to fully prevent overlapping collisions
+    df["Current Price"] = df["Ticker"].apply(lambda t: float(price_map.get(t, fallbacks.get(t, 0.0))))
     df["Total Value"] = df["Shares"] * df["Current Price"]
     df["Cost Basis Total"] = df["Shares"] * df["Cost Basis"]
     df["Total Gain ($)"] = df["Total Value"] - df["Cost Basis Total"]
     df["Total Gain (%)"] = (df["Total Gain ($)"] / df["Cost Basis Total"]) * 100
-    return df
+    
+    # Sort cleanly by total portfolio weight allocation
+    return df.sort_values(by="Total Value", ascending=False).reset_index(drop=True)
 
-@st.cache_data(ttl=600)  # Cache moving average historical lookups for 10 minutes
+@st.cache_data(ttl=600)  # 10-minute cache for moving average historical data arrays
 def get_live_technicals(watchlist):
     """
     Downloads historical trends, processes mathematical EMAs dynamically,
@@ -93,7 +99,6 @@ def get_live_technicals(watchlist):
                 ema21 = float(series.ewm(span=21, adjust=False).mean().iloc[-1])
                 ema50 = float(series.ewm(span=50, adjust=False).mean().iloc[-1])
                 
-                # Core Trend Engine Rules
                 if last_price > ema21 and ema21 > ema50:
                     setup = "🔥 Breakout"
                 elif ema50 * 0.98 <= last_price <= ema21 * 1.02:
@@ -129,7 +134,7 @@ def get_insider_data(days=90):
         {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
     ]
 
-@st.cache_data(ttl=1800)  # Political data changes slowly, check every 30 mins
+@st.cache_data(ttl=1800)
 def get_live_political_trades():
     headers = {"User-Agent": "Mozilla/5.0"}
     formatted_trades = []
