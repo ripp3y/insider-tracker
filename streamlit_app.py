@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Global CSS Inject (Corrected parameters to satisfy Streamlit requirements)
+# Custom Global CSS Inject
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; }
@@ -39,7 +39,7 @@ lookback_days = st.sidebar.slider(
     value=90
 )
 
-# Active Watchlist Array (Enforcing absolute item uniqueness to prevent Pandas index collisions)
+# Active Watchlist Array 
 if 'watchlist' not in st.session_state:
     raw_watchlist = [
         "NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE", "MU", "AMD", "FN", 
@@ -48,7 +48,6 @@ if 'watchlist' not in st.session_state:
         "FLEX", "TTMI", "UMC", "GOOGL", "NUE", "NWPX", "CSCO", "GOOG", "STLD", 
         "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ", "WOLF", "NXPI", "NVTS"
     ]
-    # Keep list clean, sorted, unique, and filter out restricted entities
     st.session_state.watchlist = sorted(list(set([t for t in raw_watchlist if t != "EZRA"])))
 
 # ==============================================================================
@@ -59,7 +58,7 @@ import data_store
 current_date = pd.to_datetime("2026-05-25")
 cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
 
-# Fetch Dynamic Insiders Matrix safely
+# Fetch Insiders Matrix safely
 try:
     df_insiders = pd.DataFrame(data_store.get_insider_data(days=lookback_days))
 except Exception as e:
@@ -67,7 +66,7 @@ except Exception as e:
     df_insiders = pd.DataFrame(columns=["Filing Date", "Ticker", "Insider", "Role"])
 df_insiders = df_insiders.reset_index(drop=True)
 
-# Fetch Live Political Stream Data from API
+# Fetch Live Political Stream Data
 try:
     df_poly = data_store.get_live_political_trades()
     df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
@@ -83,7 +82,7 @@ except Exception:
     df_whales = pd.DataFrame(columns=["Ticker", "Whale/Fund", "Type", "Change"])
     positive_whales = pd.DataFrame(columns=["Ticker", "Whale/Fund", "Type", "Change"])
 
-# Navigation System Tabs
+# Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏢 Insiders", 
     "🏛️ Politics", 
@@ -208,7 +207,7 @@ with tab4:
     else:
         st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
 
-    # 2. Technical Floor Anchors Framework (Patched Missing Quotes and Syntactical Terminations)
+    # Technical Floor Anchors
     st.markdown("---")
     st.subheader("🎯 Entry Windows & Support Anchors")
     
@@ -229,7 +228,7 @@ with tab4:
     df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
     st.dataframe(df_tech_filtered, width="stretch")
     
-    # 3. Relative Volume Matrix
+    # Relative Volume Matrix
     st.markdown("---")
     st.subheader("📊 Relative Volume Momentum (Volume > 20-day MA)")
     
@@ -238,4 +237,32 @@ with tab4:
         {"Ticker": "POWL", "Relative Vol (x)": "1.73x", "Flow State": "🔴 Distribution", "Status": "🔥 BREAKOUT"},
         {"Ticker": "CSCO", "Relative Vol (x)": "1.64x", "Flow State": "🟢 Accumulation", "Status": "🔥 BREAKOUT"},
         {"Ticker": "MSFT", "Relative Vol (x)": "1.46x", "Flow State": "🟢 Accumulation", "Status": "💤 Normal"},
-        {"Ticker": "
+        {"Ticker": "FIX", "Relative Vol (x)": "1.37x", "Flow State": "🔴 Distribution", "Status": "💤 Normal"}
+    ]
+    st.dataframe(pd.DataFrame(volume_data), width="stretch")
+
+# ==============================================================================
+# TAB 5: WATCHLIST MANAGER
+# ==============================================================================
+with tab5:
+    st.header("Watchlist Manager")
+    
+    with st.form("add_ticker_form", clear_on_submit=True):
+        new_ticker = st.text_input("Enter Ticker Symbol:").upper().strip()
+        submit_btn = st.form_submit_button("➕ Add to Watchlist")
+        
+        if submit_btn and new_ticker:
+            if new_ticker == "EZRA":
+                st.toast("Holding block active: EZRA is explicitly barred from this model.", icon="🚫")
+            elif new_ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_ticker)
+                st.session_state.watchlist = sorted(list(set(st.session_state.watchlist)))
+                st.toast(f"Added {new_ticker} to dashboard indexing!", icon="✅")
+                st.rerun()
+
+    st.subheader("Currently Tracking:")
+    st.info(", ".join(st.session_state.watchlist))
+    
+    if st.button("🗑️ Reset Watchlist"):
+        st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "LITE", "POWL"]
+        st.rerun()
