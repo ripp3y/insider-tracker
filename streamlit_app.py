@@ -152,3 +152,78 @@ with tab3:
             p1, p2 = st.columns([2, 1])
             with p1:
                 st.dataframe(df_politics, width="stretch", hide_index=True)
+            with p2:
+                st.markdown("##### Trade Signage Velocity")
+                flow_counts = df_politics["Transaction"].value_counts().reset_index()
+                flow_counts.columns = ["Direction", "Count"]
+                st.bar_chart(flow_counts.set_index("Direction"), y="Count", color="#10b981")
+        else:
+            st.info("No policy-maker transactions recorded in current queue window.")
+    except Exception as e:
+        st.error(f"Political tracking data feed timed out: {e}")
+
+# TAB 4: LARGE-VOLUME WHALE ASSIGNMENTS
+with tab4:
+    st.subheader("🐋 Institutional Whale Block Transcripts")
+    
+    f1, f2 = st.columns(2)
+    with f1:
+        st.multiselect(
+            "Filter by Fund Type:", 
+            options=["13F", "13D (Active)", "13G (Passive)"], 
+            default=["13F", "13D (Active)", "13G (Passive)"]
+        )
+    with f2:
+        st.multiselect(
+            "Filter Flow State:", 
+            options=["Accumulation", "Reduction", "Material Buy"], 
+            default=["Accumulation", "Reduction", "Material Buy"]
+        )
+        
+    try:
+        df_whales = data_store.get_live_whale_blocks()
+        if not df_whales.empty:
+            st.dataframe(df_whales, width="stretch", hide_index=True)
+        else:
+            st.info("No institutional block accumulation adjustments tracked.")
+    except Exception as e:
+        st.error(f"Whale data parsing stream error: {e}")
+
+# ==============================================================================
+# 5. WATCHLIST MANAGER & TECHNICAL FOCUS LAYOUT
+# ==============================================================================
+with tab5:
+    st.subheader("📋 Dynamic Signal Focus Console")
+    st.caption("Isolate core bottleneck nodes, policy trends, and lithium/copper infrastructure positions")
+
+    # Initialize persistent session selections for specialized tickers
+    if "tracked_watchlist" not in st.session_state:
+        st.session_state.tracked_watchlist = ["NVDA", "LITE", "MRVL", "AXTI", "COHR", "FIX", "ALB"]
+
+    # Interactive management input panel
+    updated_watchlist = st.multiselect(
+        "Define Active Asymmetry Focus Matrix:",
+        options=["NVDA", "LITE", "MRVL", "AXTI", "COHR", "FIX", "ALB", "AMD", "INTC", "POWL", "WOLF", "CIEN", "SNDK", "STX"],
+        default=st.session_state.tracked_watchlist
+    )
+    
+    # Sync selections back to local state engine
+    st.session_state.tracked_watchlist = updated_watchlist
+
+    st.markdown("---")
+    
+    # Stream filtered high-signal technical analysis matrix
+    if st.session_state.tracked_watchlist:
+        st.markdown(f"##### 🎯 Entry Windows & Support Anchors ({len(st.session_state.tracked_watchlist)} Assets Selected)")
+        try:
+            # Query backend data core with thread-isolated parameters
+            df_filtered_tech = data_store.get_live_technicals(st.session_state.tracked_watchlist)
+            
+            if not df_filtered_tech.empty:
+                st.dataframe(df_filtered_tech, width="stretch", hide_index=True)
+            else:
+                st.info("Calculating technical momentum spreads... Verify asset matrix input flags.")
+        except Exception as e:
+            st.error(f"Technical trend filtering collision: {e}")
+    else:
+        st.warning("Focus matrix completely empty. Select target assets above to engage tracking telemetry.")
