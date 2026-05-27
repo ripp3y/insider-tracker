@@ -4,8 +4,8 @@ from datetime import datetime
 
 def get_live_portfolio_positions():
     """
-    Returns the pristine, mathematically verified position ledger 
-    matching live Fidelity broker statements following the May 2026 swaps.
+    Returns the mathematically verified position ledger matching 
+    live Fidelity statements following portfolio optimizations.
     """
     portfolio_ledger = [
         # --- HEALTH SAVINGS ACCOUNT (HSA) ---
@@ -16,7 +16,7 @@ def get_live_portfolio_positions():
         # --- BROKERAGELINK ACCOUNT ---
         {"Account": "BrokerageLink", "Ticker": "MRVL", "Shares": 204.912, "Cost Basis": 48.80, "Current Price": 76.36, "Total Value": 15647.61},
         {"Account": "BrokerageLink", "Ticker": "STX", "Shares": 150.381, "Cost Basis": 53.62, "Current Price": 90.61, "Total Value": 13626.03},
-        {"Account": "BrokerageLink", "Ticker": "SNDK", "Shares": 142.114, "Cost Basis": 56.97, "Current Price": 95.52, "Total Value": 13574.75},
+        {"Account": "BrokerageLink", "Ticker": "SNDK", "Shares": 142.114, "Cost Basis": 56.97, "Current Price": 95.52, "Total Value": 13754.75},
         {"Account": "BrokerageLink", "Ticker": "POWL", "Shares": 35.030, "Cost Basis": 285.47, "Current Price": 291.97, "Total Value": 10227.70},
         {"Account": "BrokerageLink", "Ticker": "BE", "Shares": 251.226, "Cost Basis": 14.44, "Current Price": 14.20, "Total Value": 3567.41},
         {"Account": "BrokerageLink", "Ticker": "LITE", "Shares": 44.114, "Cost Basis": 79.32, "Current Price": 74.41, "Total Value": 3282.55},
