@@ -118,17 +118,4 @@ def get_live_technicals(watchlist):
     return pd.DataFrame(columns=["Ticker", "Last Price", "21-day EMA", "50-day EMA", "Technical Setup"])
 
 def get_insider_data(days=90):
-    return [
-        {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
-        {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
-        {"Filing Date": "2026-05-17", "Ticker": "FN", "Insider": "Apex Holdings", "Role": "Director"},
-        {"Filing Date": "2026-05-15", "Ticker": "ALB", "Insider": "Masters Eric", "Role": "Director"},
-        {"Filing Date": "2026-05-14", "Ticker": "FIX", "Insider": "Garner William", "Role": "VP / COO"},
-        {"Filing Date": "2026-05-12", "Ticker": "NVDA", "Insider": "Huang Jen-Hsun", "Role": "CEO"},
-        {"Filing Date": "2026-05-11", "Ticker": "MRVL", "Insider": "Murphy Matt", "Role": "CEO"},
-        {"Filing Date": "2026-05-11", "Ticker": "MU", "Insider": "Mehrotra Sanjay", "Role": "CEO"},
-        {"Filing Date": "2026-05-08", "Ticker": "POWL", "Insider": "Powell Brett", "Role": "Director"},
-        {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
-    ]
-
-@st.cache_data(ttl=1
+    return
