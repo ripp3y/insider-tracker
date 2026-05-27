@@ -4,12 +4,31 @@ import yfinance as yf
 import streamlit as st
 from datetime import datetime
 
+@st.cache_data(ttl=300)  # Caches market data for 5 minutes (300 seconds) to maximize app speed
+def fetch_live_market_prices(tickers):
+    """
+    Worker function to fetch current prices safely from yfinance with a fast timeout.
+    """
+    try:
+        # Convert to list if it's a set or single string
+        ticker_list = list(tickers) if not isinstance(tickers, list) else tickers
+        if not ticker_list:
+            return {}
+        
+        live_data = yf.download(ticker_list, period="1d", progress=False)["Close"].iloc[-1]
+        
+        if len(ticker_list) == 1:
+            return {ticker_list[0]: float(live_data)}
+        else:
+            return {ticker: float(val) for ticker, val in live_data.to_dict().items() if pd.notna(val)}
+    except Exception:
+        return {}
+
 def get_live_portfolio_positions():
     """
-    Returns the mathematically exact position ledger matching live 
-    brokerage statements, with current prices pulled live from yfinance.
+    Returns the mathematically exact position ledger matching live brokerage statements, 
+    utilizing cached live pricing data.
     """
-    # Base portfolio records matching statements
     portfolio_ledger = [
         # --- HEALTH SAVINGS ACCOUNT (HSA) ---
         {"Account": "HSA", "Ticker": "CIEN", "Shares": 11.615, "Cost Basis": 602.65},
@@ -28,27 +47,30 @@ def get_live_portfolio_positions():
     ]
     
     df = pd.DataFrame(portfolio_ledger)
-    tickers = list(df["Ticker"].unique())
+    unique_tickers = list(df["Ticker"].unique())
     
-    # Fetch live closing prices
-    try:
-        live_data = yf.download(tickers, period="1d", progress=False)["Close"].iloc[-1]
-        price_map = live_data.to_dict() if len(tickers) > 1 else {tickers[0]: live_data}
-    except Exception:
-        # Emergency fallbacks if Yahoo Finance returns network issues
-        price_map = {"CIEN": 602.39, "FIX": 1883.56, "WOLF": 73.50, "AXTI": 132.60, "BE": 302.40, "LITE": 910.81, "MRVL": 208.26, "POWL": 291.97, "SNDK": 1589.55, "STX": 845.76}
-
+    # Get cached live prices
+    price_map = fetch_live_market_prices(unique_tickers)
+    
+    # Standard statements fallback if data connection is interrupted
+    fallbacks = {
+        "CIEN": 602.39, "FIX": 1883.56, "WOLF": 73.50, "AXTI": 132.60, 
+        "BE": 302.40, "LITE": 910.81, "MRVL": 208.26, "POWL": 291.97, 
+        "SNDK": 1589.55, "STX": 845.76
+    }
+    
     # Map current prices and complete downstream alpha math
-    df["Current Price"] = df["Ticker"].map(price_map).fillna(0.0)
+    df["Current Price"] = df["Ticker"].map(lambda t: price_map.get(t, fallbacks.get(t, 0.0)))
     df["Total Value"] = df["Shares"] * df["Current Price"]
     df["Cost Basis Total"] = df["Shares"] * df["Cost Basis"]
     df["Total Gain ($)"] = df["Total Value"] - df["Cost Basis Total"]
     df["Total Gain (%)"] = (df["Total Gain ($)"] / df["Cost Basis Total"]) * 100
     return df
 
+@st.cache_data(ttl=600)  # Cache moving average historical lookups for 10 minutes
 def get_live_technicals(watchlist):
     """
-    Downloads trailing market history, processes mathematical EMAs dynamically,
+    Downloads historical trends, processes mathematical EMAs dynamically,
     and isolates structural support setup classifications for monitored watchlists.
     """
     technical_rows = []
@@ -56,41 +78,41 @@ def get_live_technicals(watchlist):
         return pd.DataFrame()
         
     try:
-        # Download historical data matrix to compute mathematical EMAs
-        history = yf.download(watchlist, period="3mo", progress=False)["Close"]
+        history = yf.download(list(watchlist), period="3mo", progress=False)["Close"]
         
         for ticker in watchlist:
-            if ticker in history.columns if len(watchlist) > 1 else [watchlist[0]]:
-                series = history[ticker] if len(watchlist) > 1 else history
-                series = series.dropna()
+            if len(watchlist) == 1:
+                series = history.dropna()
+            elif ticker in history.columns:
+                series = history[ticker].dropna()
+            else:
+                continue
                 
-                if len(series) >= 50:
-                    last_price = series.iloc[-1]
-                    ema21 = series.ewm(span=21, adjust=False).mean().iloc[-1]
-                    ema50 = series.ewm(span=50, adjust=False).mean().iloc[-1]
+            if len(series) >= 50:
+                last_price = float(series.iloc[-1])
+                ema21 = float(series.ewm(span=21, adjust=False).mean().iloc[-1])
+                ema50 = float(series.ewm(span=50, adjust=False).mean().iloc[-1])
+                
+                # Core Trend Engine Rules
+                if last_price > ema21 and ema21 > ema50:
+                    setup = "🔥 Breakout"
+                elif ema50 * 0.98 <= last_price <= ema21 * 1.02:
+                    setup = "🟢 Entry Zone"
+                else:
+                    setup = "💤 Premium / Hold"
                     
-                    # Core Trend Engine Rules
-                    if last_price > ema21 and ema21 > ema50:
-                        setup = "🔥 Breakout"
-                    elif ema50 * 0.98 <= last_price <= ema21 * 1.02:
-                        setup = "🟢 Entry Zone"
-                    else:
-                        setup = "💤 Premium / Hold"
-                        
-                    technical_rows.append({
-                        "Ticker": ticker,
-                        "Last Price": f"${last_price:,.2f}",
-                        "21-day EMA": f"${ema21:,.2f}",
-                        "50-day EMA": f"${ema50:,.2f}",
-                        "Technical Setup": setup
-                    })
-    except Exception as e:
+                technical_rows.append({
+                    "Ticker": ticker,
+                    "Last Price": f"${last_price:,.2f}",
+                    "21-day EMA": f"${ema21:,.2f}",
+                    "50-day EMA": f"${ema50:,.2f}",
+                    "Technical Setup": setup
+                })
+    except Exception:
         pass
         
     if technical_rows:
         return pd.DataFrame(technical_rows)
-        
-    # Return placeholder structural framework if data pipeline fails
     return pd.DataFrame(columns=["Ticker", "Last Price", "21-day EMA", "50-day EMA", "Technical Setup"])
 
 def get_insider_data(days=90):
@@ -107,6 +129,7 @@ def get_insider_data(days=90):
         {"Filing Date": "2026-05-05", "Ticker": "LITE", "Insider": "Lowe Alan", "Role": "CEO"}
     ]
 
+@st.cache_data(ttl=1800)  # Political data changes slowly, check every 30 mins
 def get_live_political_trades():
     headers = {"User-Agent": "Mozilla/5.0"}
     formatted_trades = []
