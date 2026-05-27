@@ -20,6 +20,7 @@ def fetch_live_market_prices(tickers):
         if not ticker_list:
             return {}
         
+        # Explicitly turn off threads to prevent the DB lockups seen in the logs
         data = yf.download(ticker_list, period="1d", progress=False, threads=False)
         
         if "Close" in data.columns:
@@ -39,12 +40,9 @@ def get_live_portfolio_positions():
     Main positions matrix mapping real ledger structures to eliminate ticker parsing collisions.
     """
     portfolio_ledger = [
-        # --- HEALTH SAVINGS ACCOUNT (HSA) ---
         {"Account": "HSA", "Ticker": "CIEN", "Shares": 11.615, "Cost Basis": 602.65},
         {"Account": "HSA", "Ticker": "FIX", "Shares": 2.828, "Cost Basis": 1769.94},
         {"Account": "HSA", "Ticker": "WOLF", "Shares": 28.398, "Cost Basis": 75.99},
-        
-        # --- BROKERAGELINK ACCOUNT ---
         {"Account": "BrokerageLink", "Ticker": "AXTI", "Shares": 17.878, "Cost Basis": 135.81},
         {"Account": "BrokerageLink", "Ticker": "BE", "Shares": 11.797, "Cost Basis": 307.61},
         {"Account": "BrokerageLink", "Ticker": "FIX", "Shares": 5.237, "Cost Basis": 1818.62},
@@ -93,7 +91,7 @@ def get_live_technicals(watchlist):
             else:
                 continue
                 
-            if len(series) >= 50:
+            if len(series) >= 20:
                 last_price = float(series.iloc[-1])
                 ema21 = float(series.ewm(span=21, adjust=False).mean().iloc[-1])
                 ema50 = float(series.ewm(span=50, adjust=False).mean().iloc[-1])
