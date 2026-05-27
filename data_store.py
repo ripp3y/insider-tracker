@@ -3,9 +3,11 @@ import requests
 import yfinance as yf
 import streamlit as st
 import os
+import logging
 from datetime import datetime
 
-# Disable local cache to completely stop concurrent SQLite database lockups
+# Prevent third-party engines from generating console logs
+logging.getLogger("streamlit").setLevel(logging.ERROR)
 os.environ["YFINANCE_CACHE"] = "FALSE"
 
 @st.cache_data(ttl=300)
