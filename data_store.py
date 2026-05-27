@@ -6,7 +6,7 @@ import os
 import logging
 from datetime import datetime
 
-# Prevent third-party engines from generating console logs
+# Block yfinance internal caching to stop SQLite concurrent thread lockups
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 os.environ["YFINANCE_CACHE"] = "FALSE"
 
