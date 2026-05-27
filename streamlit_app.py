@@ -46,6 +46,7 @@ with st.sidebar:
     st.markdown("### 📡 Pipeline Status")
     st.info("• Data Core: Connected")
     st.info("• Rate Engine: Thread-Isolated")
+    st.info("• Visual Engine: Active")
 
 # ==============================================================================
 # 3. CORE DATA PROCESSING LAYER
@@ -97,44 +98,71 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 Technical Setup Windows"
 ])
 
+# TAB 1: ASYMMETRY LEDGER VIEW
 with tab1:
     st.subheader("📋 Account Asset Allocations")
     if not df_portfolio.empty:
-        df_display = df_portfolio.copy()
-        df_display["Shares"] = df_display["Shares"].map("{:,.3f}".format)
-        df_display["Cost Basis"] = df_display["Cost Basis"].map("${:,.2f}".format)
-        df_display["Current Price"] = df_display["Current Price"].map("${:,.2f}".format)
-        df_display["Total Value"] = df_display["Total Value"].map("${:,.2f}".format)
-        df_display["Total Gain ($)"] = df_display["Total Gain ($)"].map("${:,.2f}".format)
-        df_display["Total Gain (%)"] = df_display["Total Gain (%)"].map("{:,.2f}%".format)
+        c1, c2 = st.columns([2, 1])
         
-        st.dataframe(df_display, width="stretch", hide_index=True)
+        with c1:
+            df_display = df_portfolio.copy()
+            df_display["Shares"] = df_display["Shares"].map("{:,.3f}".format)
+            df_display["Cost Basis"] = df_display["Cost Basis"].map("${:,.2f}".format)
+            df_display["Current Price"] = df_display["Current Price"].map("${:,.2f}".format)
+            df_display["Total Value"] = df_display["Total Value"].map("${:,.2f}".format)
+            df_display["Total Gain ($)"] = df_display["Total Gain ($)"].map("${:,.2f}".format)
+            df_display["Total Gain (%)"] = df_display["Total Gain (%)"].map("{:,.2f}%".format)
+            st.dataframe(df_display, width="stretch", hide_index=True)
+            
+        with c2:
+            st.markdown("##### Net Allocation Weight")
+            chart_df = df_portfolio[["Ticker", "Total Value"]].copy()
+            st.bar_chart(chart_df.set_index("Ticker"), y="Total Value", color="#ef4444")
     else:
         st.warning("Ledger matrix currently empty.")
 
+# TAB 2: CORPORATE INSIDERS EYE
 with tab2:
     st.subheader("🏢 Form 4 Corporate Insider Monitoring")
     try:
         insider_data = data_store.get_insider_data(days=lookback_days)
         if insider_data:
             df_insider = pd.DataFrame(insider_data)
-            st.dataframe(df_insider, width="stretch", hide_index=True)
+            
+            v1, v2 = st.columns([1, 2])
+            with v1:
+                st.markdown("##### Insider Filings by Asset")
+                ticker_counts = df_insider["Ticker"].value_counts().reset_index()
+                ticker_counts.columns = ["Ticker", "Filings Volume"]
+                st.bar_chart(ticker_counts.set_index("Ticker"), y="Filings Volume", color="#3b82f6")
+                
+            with v2:
+                st.dataframe(df_insider, width="stretch", hide_index=True)
         else:
             st.info("No active corporate insider filings detected inside lookback window.")
     except Exception as e:
         st.error(f"Insider pipeline unresolved: {e}")
 
+# TAB 3: CONGRESSIONAL DATA CAPTURE
 with tab3:
     st.subheader("🏛️ Capital Hill Policy Trade Disclosures")
     try:
         df_politics = data_store.get_live_political_trades()
         if not df_politics.empty:
-            st.dataframe(df_politics, width="stretch", hide_index=True)
+            p1, p2 = st.columns([2, 1])
+            with p1:
+                st.dataframe(df_politics, width="stretch", hide_index=True)
+            with p2:
+                st.markdown("##### Trade Signage Velocity")
+                flow_counts = df_politics["Transaction"].value_counts().reset_index()
+                flow_counts.columns = ["Direction", "Count"]
+                st.bar_chart(flow_counts.set_index("Direction"), y="Count", color="#10b981")
         else:
             st.info("No policy-maker transactions recorded in current queue window.")
     except Exception as e:
         st.error(f"Political tracking data feed timed out: {e}")
 
+# TAB 4: LARGE-VOLUME WHALE ASSIGNMENTS
 with tab4:
     st.subheader("🐋 Institutional Whale Block Transcripts")
     
@@ -153,6 +181,7 @@ with tab4:
     except Exception as e:
         st.error(f"Whale data parsing stream error: {e}")
 
+# TAB 5: MOVING AVERAGE ENTRY TRENDS
 with tab5:
     st.subheader("🎯 Entry Windows & Support Anchors")
     if not df_portfolio.empty:
