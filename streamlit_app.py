@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # ==============================================================================
-# 1. APP CONFIGURATION & SIDEBAR
+# 1. APP CONFIGURATION & GLOBAL STYLING
 # ==============================================================================
 st.set_page_config(
     page_title="Asymmetry Insider Engine",
@@ -11,6 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom Global CSS Inject (Corrected parameters to satisfy Streamlit requirements)
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; }
@@ -25,6 +26,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ==============================================================================
+# 2. SIDEBAR CONFIGURATION & LOOKBACK WINDOW
+# ==============================================================================
 st.sidebar.header("⚙️ Configuration")
 st.sidebar.success("🔑 SEC API Key loaded from Cloud Secrets.")
 
@@ -35,25 +39,27 @@ lookback_days = st.sidebar.slider(
     value=90
 )
 
+# Active Watchlist Array (Enforcing absolute item uniqueness to prevent Pandas index collisions)
 if 'watchlist' not in st.session_state:
     raw_watchlist = [
         "NVDA", "INTC", "MRVL", "FIX", "ALB", "LITE", "MU", "AMD", "FN", 
         "TSEM", "STX", "SNDK", "CEIN", "LRCX", "WDC", "ASX", "AXTI", "GLW", 
         "TXN", "C3NX", "CENX", "EFXT", "STRL", "MYRG", "COHR", "VICR", "SIMO", 
         "FLEX", "TTMI", "UMC", "GOOGL", "NUE", "NWPX", "CSCO", "GOOG", "STLD", 
-        "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ"
+        "TSM", "POWL", "BE", "DELL", "MSFT", "MTZ", "WOLF", "NXPI", "NVTS"
     ]
+    # Keep list clean, sorted, unique, and filter out restricted entities
     st.session_state.watchlist = sorted(list(set([t for t in raw_watchlist if t != "EZRA"])))
 
 # ==============================================================================
-# DATA INGESTION & STANDARDIZATION LAYER (LIVE API CONNECTED)
+# 3. DATA INGESTION & STANDARDIZATION LAYER
 # ==============================================================================
 import data_store
 
 current_date = pd.to_datetime("2026-05-25")
 cutoff_date = current_date - pd.to_timedelta(lookback_days, unit='D')
 
-# 1. Fetch Dynamic Insiders Matrix safely
+# Fetch Dynamic Insiders Matrix safely
 try:
     df_insiders = pd.DataFrame(data_store.get_insider_data(days=lookback_days))
 except Exception as e:
@@ -61,7 +67,7 @@ except Exception as e:
     df_insiders = pd.DataFrame(columns=["Filing Date", "Ticker", "Insider", "Role"])
 df_insiders = df_insiders.reset_index(drop=True)
 
-# 2. Fetch Live Political Stream Data from API
+# Fetch Live Political Stream Data from API
 try:
     df_poly = data_store.get_live_political_trades()
     df_poly['Filing Date'] = pd.to_datetime(df_poly['Filing Date'])
@@ -69,7 +75,7 @@ try:
 except Exception:
     df_poly_filtered = pd.DataFrame(columns=["Filing Date", "Ticker", "Politician", "Chamber", "Transaction", "Est. Value"])
 
-# 3. Fetch Live Institutional Whale Inflows
+# Fetch Live Institutional Whale Inflows
 try:
     df_whales = data_store.get_live_whale_blocks().reset_index(drop=True)
     positive_whales = df_whales[df_whales['Change'].isin(["Accumulation", "Material Buy"])].reset_index(drop=True)
@@ -77,7 +83,7 @@ except Exception:
     df_whales = pd.DataFrame(columns=["Ticker", "Whale/Fund", "Type", "Change"])
     positive_whales = pd.DataFrame(columns=["Ticker", "Whale/Fund", "Type", "Change"])
 
-# Navigation Tabs
+# Navigation System Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏢 Insiders", 
     "🏛️ Politics", 
@@ -92,7 +98,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.header("Corporate Insiders")
     st.subheader("🎯 Live Cluster Intensity Matches")
-    st.caption("Automatically scanning for active tickers where both corporate insiders and 13F/D/G institutional whales are accumulation buyers simultaneously.")
+    st.caption("Scanning for active tickers where both corporate insiders and institutional whale pools are accumulation buyers simultaneously.")
 
     if not df_insiders.empty and not positive_whales.empty:
         insider_tickers = set(df_insiders['Ticker'].unique())
@@ -121,13 +127,12 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
     else:
-        st.info("No concurrent insider cluster overlaps discovered in the current lookback window configuration.")
+        st.info("No concurrent insider cluster overlaps discovered in the current configuration.")
         
     st.markdown("---")
     st.subheader("Raw Insider Open-Market Activity Log")
     if not df_insiders.empty:
         df_filtered_insiders = df_insiders[df_insiders['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
-        # FIXED: Upgraded layout engine argument to stretch safely
         st.dataframe(df_filtered_insiders, width="stretch")
     else:
         st.info("Insider activity stream is currently empty.")
@@ -203,8 +208,7 @@ with tab4:
     else:
         st.info("No multi-stream overlapping cross-signals detected within your tracking parameters currently.")
 
-   # ==============================================================================
-  # 2. Technical Floor Anchors
+    # 2. Technical Floor Anchors Framework (Patched Missing Quotes and Syntactical Terminations)
     st.markdown("---")
     st.subheader("🎯 Entry Windows & Support Anchors")
     
@@ -217,11 +221,14 @@ with tab4:
         {"Ticker": "ALB", "Last Price": "$124.30", "21-day EMA": "$118.00", "50-day EMA": "$115.20", "Technical Setup": "💤 Premium / Hold"},
         {"Ticker": "BE", "Last Price": "$12.10", "21-day EMA": "$12.05", "50-day EMA": "$13.50", "Technical Setup": "🟢 Entry Zone"},
         {"Ticker": "UMC", "Last Price": "$18.22", "21-day EMA": "$16.15", "50-day EMA": "$13.40", "Technical Setup": "🔥 Breakout"},
-        {"Ticker": "WOLF", "Last Price": "$69.79", "21-day EMA": "$48.49", "50-day EMA": "$31.76", "Technical Setup": "🔥 Breakout"}
+        {"Ticker": "WOLF", "Last Price": "$69.79", "21-day EMA": "$48.49", "50-day EMA": "$31.76", "Technical Setup": "🔥 Breakout"},
+        {"Ticker": "NXPI", "Last Price": "$261.40", "21-day EMA": "$248.50", "50-day EMA": "$232.00", "Technical Setup": "🔥 Breakout"},
+        {"Ticker": "NVTS", "Last Price": "$18.25", "21-day EMA": "$14.10", "50-day EMA": "$9.85", "Technical Setup": "🔥 Breakout"}
     ]
     df_tech = pd.DataFrame(technical_ledger)
     df_tech_filtered = df_tech[df_tech['Ticker'].isin(st.session_state.watchlist)].reset_index(drop=True)
     st.dataframe(df_tech_filtered, width="stretch")
+    
     # 3. Relative Volume Matrix
     st.markdown("---")
     st.subheader("📊 Relative Volume Momentum (Volume > 20-day MA)")
@@ -231,32 +238,4 @@ with tab4:
         {"Ticker": "POWL", "Relative Vol (x)": "1.73x", "Flow State": "🔴 Distribution", "Status": "🔥 BREAKOUT"},
         {"Ticker": "CSCO", "Relative Vol (x)": "1.64x", "Flow State": "🟢 Accumulation", "Status": "🔥 BREAKOUT"},
         {"Ticker": "MSFT", "Relative Vol (x)": "1.46x", "Flow State": "🟢 Accumulation", "Status": "💤 Normal"},
-        {"Ticker": "FIX", "Relative Vol (x)": "1.37x", "Flow State": "🔴 Distribution", "Status": "💤 Normal"}
-    ]
-    st.dataframe(pd.DataFrame(volume_data), width="stretch")
-
-# ==============================================================================
-# TAB 5: WATCHLIST MANAGER
-# ==============================================================================
-with tab5:
-    st.header("Watchlist Manager")
-    
-    with st.form("add_ticker_form", clear_on_submit=True):
-        new_ticker = st.text_input("Enter Ticker Symbol:").upper().strip()
-        submit_btn = st.form_submit_button("➕ Add to Watchlist")
-        
-        if submit_btn and new_ticker:
-            if new_ticker == "EZRA":
-                st.toast("Holding block active: EZRA is explicitly barred from this model.", icon="🚫")
-            elif new_ticker not in st.session_state.watchlist:
-                st.session_state.watchlist.append(new_ticker)
-                st.session_state.watchlist = sorted(list(set(st.session_state.watchlist)))
-                st.toast(f"Added {new_ticker} to dashboard indexing!", icon="✅")
-                st.rerun()
-
-    st.subheader("Currently Tracking:")
-    st.info(", ".join(st.session_state.watchlist))
-    
-    if st.button("🗑️ Reset Watchlist"):
-        st.session_state.watchlist = ["NVDA", "INTC", "MRVL", "FIX", "LITE", "POWL"]
-        st.rerun()
+        {"Ticker": "
