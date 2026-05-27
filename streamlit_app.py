@@ -152,22 +152,3 @@ with tab3:
             p1, p2 = st.columns([2, 1])
             with p1:
                 st.dataframe(df_politics, width="stretch", hide_index=True)
-            with p2:
-                st.markdown("##### Trade Signage Velocity")
-                flow_counts = df_politics["Transaction"].value_counts().reset_index()
-                flow_counts.columns = ["Direction", "Count"]
-                st.bar_chart(flow_counts.set_index("Direction"), y="Count", color="#10b981")
-        else:
-            st.info("No policy-maker transactions recorded in current queue window.")
-    except Exception as e:
-        st.error(f"Political tracking data feed timed out: {e}")
-
-# TAB 4: LARGE-VOLUME WHALE ASSIGNMENTS
-with tab4:
-    st.subheader("🐋 Institutional Whale Block Transcripts")
-    
-    f1, f2 = st.columns(2)
-    with f1:
-        st.multiselect("Filter by Fund Type:", ["13F", "13D (Active)", "13G (Passive)"], default=["13F", "13D (Active)", "13G (Passive)"])
-    with f2:
-        st.multiselect("Filter Flow State:",
