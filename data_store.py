@@ -18,7 +18,6 @@ def fetch_live_market_prices(tickers):
         if not ticker_list:
             return {}
         
-        # Threads=False enforces linear reads to prevent background worker crashes
         data = yf.download(ticker_list, period="1d", progress=False, threads=False)
         
         if "Close" in data.columns:
@@ -50,20 +49,14 @@ def get_live_portfolio_positions():
         {"Account": "BrokerageLink", "Ticker": "LITE", "Shares": 3.604, "Cost Basis": 970.98},
         {"Account": "BrokerageLink", "Ticker": "MRVL", "Shares": 75.135, "Cost Basis": 133.09},
         {"Account": "BrokerageLink", "Ticker": "POWL", "Shares": 35.030, "Cost Basis": 285.47},
-        {"Account": "BrokerageLink", "Truman": "SNDK", "Shares": 8.540, "Cost Basis": 947.99},
+        {"Account": "BrokerageLink", "Ticker": "SNDK", "Shares": 8.540, "Cost Basis": 947.99},
         {"Account": "BrokerageLink", "Ticker": "STX", "Shares": 16.111, "Cost Basis": 500.45}
     ]
-    
-    # Standardize legacy legacy parsing keys if mixed references slip through
-    for position in portfolio_ledger:
-        if "Truman" in position:
-            position["Ticker"] = "SNDK"
             
     df = pd.DataFrame(portfolio_ledger)
     unique_tickers = list(df["Ticker"].unique())
     price_map = fetch_live_market_prices(unique_tickers)
     
-    # Solid fallback structures mirroring actual ledger assets to defeat API throttling walls
     fallbacks = {
         "CIEN": 602.39,   "FIX": 1883.56,  "WOLF": 73.50, 
         "AXTI": 132.60,   "BE": 302.40,    "LITE": 910.81, 
@@ -125,9 +118,6 @@ def get_live_technicals(watchlist):
     return pd.DataFrame(columns=["Ticker", "Last Price", "21-day EMA", "50-day EMA", "Technical Setup"])
 
 def get_insider_data(days=90):
-    """
-    Returns verified Form 4 insider transactional metrics.
-    """
     return [
         {"Filing Date": "2026-05-17", "Ticker": "INTC", "Insider": "Blackstone Group", "Role": "Chief Financial"},
         {"Filing Date": "2026-05-17", "Ticker": "AMD", "Insider": "Sovereign Asset Mgmt", "Role": "CEO / Presi"},
@@ -143,9 +133,6 @@ def get_insider_data(days=90):
 
 @st.cache_data(ttl=1800)
 def get_live_political_trades():
-    """
-    Pulls policy maker disclosure vectors directly from the stock watcher open index pipeline.
-    """
     headers = {"User-Agent": "Mozilla/5.0"}
     formatted_trades = []
     try:
@@ -171,9 +158,6 @@ def get_live_political_trades():
     ])
 
 def get_live_whale_blocks():
-    """
-    Returns tracking targets for large volume positions. 
-    """
     return pd.DataFrame([
         {"Ticker": "NVDA", "Whale/Fund": "Citadel Advisors", "Type": "13F", "Change": "Accumulation"},
         {"Ticker": "FIX", "Whale/Fund": "Vanguard Group", "Type": "13F", "Change": "Accumulation"},
