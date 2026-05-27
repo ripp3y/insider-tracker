@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import data_store
 import warnings
+import logging
 
-# Programmatically catch and eliminate background engine deprecation flood alerts
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+# Intercept and terminate core log streams before engine rendering runs
+logging.getLogger("streamlit").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore")
 
 # ==============================================================================
 # 1. APP CONFIGURATION & GLOBAL STYLING
@@ -107,7 +108,7 @@ with tab1:
         df_display["Total Gain ($)"] = df_display["Total Gain ($)"].map("${:,.2f}".format)
         df_display["Total Gain (%)"] = df_display["Total Gain (%)"].map("{:,.2f}%".format)
         
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        st.dataframe(df_display, hide_index=True)
     else:
         st.warning("Ledger matrix currently empty.")
 
@@ -117,7 +118,7 @@ with tab2:
         insider_data = data_store.get_insider_data(days=lookback_days)
         if insider_data:
             df_insider = pd.DataFrame(insider_data)
-            st.dataframe(df_insider, use_container_width=True, hide_index=True)
+            st.dataframe(df_insider, hide_index=True)
         else:
             st.info("No active corporate insider filings detected inside lookback window.")
     except Exception as e:
@@ -128,7 +129,7 @@ with tab3:
     try:
         df_politics = data_store.get_live_political_trades()
         if not df_politics.empty:
-            st.dataframe(df_politics, use_container_width=True, hide_index=True)
+            st.dataframe(df_politics, hide_index=True)
         else:
             st.info("No policy-maker transactions recorded in current queue window.")
     except Exception as e:
@@ -146,7 +147,7 @@ with tab4:
     try:
         df_whales = data_store.get_live_whale_blocks()
         if not df_whales.empty:
-            st.dataframe(df_whales, use_container_width=True, hide_index=True)
+            st.dataframe(df_whales, hide_index=True)
         else:
             st.info("No institutional block accumulation adjustments tracked.")
     except Exception as e:
@@ -161,7 +162,7 @@ with tab5:
         try:
             df_technicals = data_store.get_live_technicals(watchlist_tickers)
             if not df_technicals.empty:
-                st.dataframe(df_technicals, use_container_width=True, hide_index=True)
+                st.dataframe(df_technicals, hide_index=True)
             else:
                 st.info("Processing EMA support parameters... Refresh app context.")
         except Exception as e:
