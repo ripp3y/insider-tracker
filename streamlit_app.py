@@ -171,13 +171,15 @@ with tab4:
         st.multiselect(
             "Filter by Fund Type:", 
             options=["13F", "13D (Active)", "13G (Passive)"], 
-            default=["13F", "13D (Active)", "13G (Passive)"]
+            default=["13F", "13D (Active)", "13G (Passive)"],
+            key="whale_type_filter"
         )
     with f2:
         st.multiselect(
             "Filter Flow State:", 
             options=["Accumulation", "Reduction", "Material Buy"], 
-            default=["Accumulation", "Reduction", "Material Buy"]
+            default=["Accumulation", "Reduction", "Material Buy"],
+            key="whale_flow_filter"
         )
         
     try:
@@ -194,31 +196,25 @@ with tab4:
 # ==============================================================================
 with tab5:
     st.subheader("📋 Dynamic Signal Focus Console")
-    st.caption("Isolate core bottleneck nodes, policy trends, and lithium/copper infrastructure positions")
+    st.caption("Isolate core bottleneck nodes, policy trends, and infrastructure positions")
 
-    # Initialize persistent session selections for specialized tickers
     if "tracked_watchlist" not in st.session_state:
         st.session_state.tracked_watchlist = ["NVDA", "LITE", "MRVL", "AXTI", "COHR", "FIX", "ALB"]
 
-    # Interactive management input panel
     updated_watchlist = st.multiselect(
         "Define Active Asymmetry Focus Matrix:",
         options=["NVDA", "LITE", "MRVL", "AXTI", "COHR", "FIX", "ALB", "AMD", "INTC", "POWL", "WOLF", "CIEN", "SNDK", "STX"],
-        default=st.session_state.tracked_watchlist
+        default=st.session_state.tracked_watchlist,
+        key="watchlist_multiselect"
     )
     
-    # Sync selections back to local state engine
     st.session_state.tracked_watchlist = updated_watchlist
-
     st.markdown("---")
     
-    # Stream filtered high-signal technical analysis matrix
     if st.session_state.tracked_watchlist:
         st.markdown(f"##### 🎯 Entry Windows & Support Anchors ({len(st.session_state.tracked_watchlist)} Assets Selected)")
         try:
-            # Query backend data core with thread-isolated parameters
             df_filtered_tech = data_store.get_live_technicals(st.session_state.tracked_watchlist)
-            
             if not df_filtered_tech.empty:
                 st.dataframe(df_filtered_tech, width="stretch", hide_index=True)
             else:
