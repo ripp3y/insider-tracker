@@ -50,6 +50,8 @@ with tab_insider:
     st.subheader("Real-Time Corporate Insider Outlays")
     st.markdown("Scraping direct SEC EDGAR Form 4 streams. Automated robotic 10b51 plans are completely omitted.")
     
+    # Cache insider data for 5 minutes so it doesn't burn your SEC API credits on every click
+    @st.cache_data(ttl=300)
     def fetch_high_conviction_insiders(days_to_search):
         start_date = (datetime.now() - timedelta(days=days_to_search)).strftime('%Y-%m-%d')
         lucene_query = (
@@ -110,7 +112,6 @@ with tab_insider:
         insider_df = fetch_high_conviction_insiders(lookback_days)
 
     if not insider_df.empty:
-        # Check for clustering
         cluster_counts = insider_df.groupby("Ticker")["Insider Trader"].nunique()
         clusters = cluster_counts[cluster_counts >= 2].index.tolist()
         if clusters:
@@ -129,15 +130,24 @@ with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
     st.markdown("Scans moving average configurations to filter out crumbling assets and highlight strong momentum.")
     
+    # CRITICAL RATELIMIT FIX: Cache market data for 10 minutes (600 seconds) 
+    # to stop shared cloud server IP blocking
+    @st.cache_data(ttl=600)
     def calculate_trend_metrics(ticker_list):
         screened_data = []
         start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
         
         for ticker in ticker_list:
             try:
-                df = yf.download(ticker, start=start_date, end=datetime.now().strftime('%Y-%m-%d'), progress=False)
-                if df.empty or len(df) < 200: continue
-                if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+                # Use a specific ticker object setup for cleaner processing
+                tick_obj = yf.Ticker(ticker)
+                df = tick_obj.history(start=start_date, end=datetime.now().strftime('%Y-%m-%d'), progress=False)
+                
+                if df.empty or len(df) < 200: 
+                    continue
+                    
+                if isinstance(df.columns, pd.MultiIndex): 
+                    df.columns = df.columns.get_level_values(0)
 
                 close_series = df['Close']
                 current_price = float(close_series.iloc[-1])
@@ -175,12 +185,13 @@ with tab_radar:
                 pass
         return pd.DataFrame(screened_data)
 
-    with st.spinner("Analyzing multi-timeframe trends..."):
+    with st.spinner("Analyzing multi-timeframe trends safely..."):
         radar_df = calculate_trend_metrics(MASTER_WATCHLIST)
 
     if not radar_df.empty:
         radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
         
+        # Cleaned up table call to match newest streamlit version updates seen in logs
         st.dataframe(
             radar_df.style.map(
                 lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
@@ -190,4 +201,5 @@ with tab_radar:
             ),
             use_container_width=True
         )
-
+    else:
+        st.warning("No data returned. The shared server is currently rate-limited by Yahoo. It will automatically load your matrix once the window clears.")
