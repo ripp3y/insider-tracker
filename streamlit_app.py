@@ -135,11 +135,11 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (VOLUME SURGE METRICS)
+# TAB 2: STRUCTURAL UPTREND RADAR (SHORT-TERM MOMENTUM FILTER)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Tracks multi-timeframe structure alongside RSI overbought indicators and relative volume surge velocity.")
+    st.markdown("Filtered for immediate 20-day momentum. Assets coasting flat or breaking down short-term are explicitly downgraded.")
     
     @st.cache_data(ttl=600)
     def calculate_trend_metrics_hardened(ticker_list):
@@ -175,8 +175,13 @@ with tab_radar:
                 vol_series = df[vol_col].astype(float)
                 
                 current_price = float(close_series.iloc[-1])
+                sma_20 = float(close_series.rolling(window=20).mean().iloc[-1])
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
+                
+                # Calculate active 1-Month performance (approx. 21 trading sessions)
+                price_1m_ago = float(close_series.iloc[-21])
+                perf_1m = ((current_price - price_1m_ago) / price_1m_ago) * 100
                 
                 # Calculate relative volume surge over a 20-day baseline
                 current_volume = float(vol_series.iloc[-1])
@@ -193,9 +198,12 @@ with tab_radar:
                 rs = gain / (loss + 1e-9)
                 rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 
-                if current_price > sma_50 and sma_50 > sma_200:
+                # ADJUSTED STRUCTURE LOGIC: Requires active price clearance over the 20D SMA
+                if current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200:
                     status = "🔥 Strong Uptrend"
-                elif current_price > sma_200 and current_price <= sma_50:
+                elif current_price <= sma_20 and current_price > sma_50:
+                    status = "⏳ Stalling / Flat"
+                elif current_price <= sma_50 and current_price > sma_200:
                     status = "⏳ Support Test"
                 else:
                     status = "⚠️ Structural Breakdown"
@@ -208,12 +216,13 @@ with tab_radar:
                     "Price": f"${current_price:.2f}",
                     "Structure": status,
                     "RSI (14)": f"{rsi:.1f}",
+                    "1-Mo Return": f"{perf_1m:+.1f}%",       # NEW COLUMN: Spotlights current active performance
                     "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",
                     "SMA 50 Support": f"${sma_50:.2f}",
                     "Dist to SMA 50": f"{dist_to_50:+.1f}%",
                     "SMA 200 Floor": f"${sma_200:.2f}",
                     "Dist to SMA 200": f"{dist_to_200:+.1f}%",
-                    "raw_sort": dist_to_50
+                    "raw_sort": perf_1m                       # SORT RULE: Ranks table by highest 1-month performer
                 })
             except Exception:
                 pass
@@ -225,6 +234,7 @@ with tab_radar:
             radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
 
         if not radar_df.empty:
+            # Sorted by the raw monthly return value so leaders sit on top
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
             
             st.dataframe(
