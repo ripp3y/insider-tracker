@@ -71,7 +71,8 @@ with tab_insider:
             f"filingDate:[{start_date} TO *]"
         )
         try:
-            response = insider_api.get_transactions({"query": lucene_query, "size": 50})
+            # FIXED: Using the proper library method '.get_filings' to query filings
+            response = insider_api.get_filings({"query": lucene_query, "size": 50})
             transactions = response.get("transactions", [])
             parsed_trades = []
             
@@ -134,25 +135,22 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (ALPHA VANTAGE IMMUNITY ENGINE)
+# TAB 2: STRUCTURAL UPTREND RADAR
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
     st.markdown("Scans key moving averages via Alpha Vantage pipeline to keep data moving smoothly without rate limits.")
     
-    @st.cache_data(ttl=1800)  # Long cache (30 mins) to protect standard API tier usage
+    @st.cache_data(ttl=1800)
     def calculate_trend_metrics_av(ticker_list, api_key):
         screened_data = []
         ts = TimeSeries(key=api_key, output_format='pandas')
         
         for ticker in ticker_list:
             try:
-                # Pull full daily data series 
                 df, meta = ts.get_daily(symbol=ticker, outputsize='full')
-                
-                # Standardize Alpha Vantage messy column naming conventions
                 df.columns = [col.split('. ')[1].title() for col in df.columns]
-                df = df.sort_index(ascending=True) # Ensure chronological order
+                df = df.sort_index(ascending=True)
 
                 if df.empty or len(df) < 200: 
                     continue
@@ -162,7 +160,6 @@ with tab_radar:
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
                 
-                # Compute RSI (14)
                 delta = close_series.diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
