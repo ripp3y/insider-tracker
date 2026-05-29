@@ -71,9 +71,9 @@ with tab_insider:
             f"filingDate:[{start_date} TO *]"
         )
         try:
-            # FIXED: Using the proper library method '.get_filings' to query filings
-            response = insider_api.get_filings({"query": lucene_query, "size": 50})
-            transactions = response.get("transactions", [])
+            # CORRECTED: Using the universal '.get_data' API request wrapper method
+            response = insider_api.get_data(lucene_query)
+            transactions = response.get("transactions", []) if isinstance(response, dict) else []
             parsed_trades = []
             
             for trade in transactions:
