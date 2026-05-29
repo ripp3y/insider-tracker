@@ -135,17 +135,16 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (SELF-HEALING ENGINE)
+# TAB 2: STRUCTURAL UPTREND RADAR (RE-ORDERED VISUAL MATRIX)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Uses an instant fast-batch query pipeline with an automated fallback mechanism to circumvent server rate limits.")
+    st.markdown("Ordered structurally with key relative strength and liquidity filters positioned upfront.")
     
     @st.cache_data(ttl=600)
     def calculate_trend_metrics_hardened(ticker_list):
         screened_data = []
         
-        # Step 1: Fire consolidated batch call with single-threading to dodge firewall filters
         tickers_string = " ".join(ticker_list)
         try:
             batch_data = yf.download(tickers_string, period="1y", group_by="ticker", threads=False, progress=False)
@@ -155,11 +154,9 @@ with tab_radar:
         for ticker in ticker_list:
             df = pd.DataFrame()
             
-            # Extract from batch if data exists
             if not batch_data.empty and ticker in batch_data.columns.levels[0]:
                 df = batch_data[ticker].dropna()
                 
-            # Step 2: Fallback Logic—If batch was dropped or rate-limited, isolate the asset independently
             if df.empty or len(df) < 200:
                 try:
                     asset = yf.Ticker(ticker)
@@ -171,13 +168,18 @@ with tab_radar:
                 continue
 
             try:
-                # Use standard close series tracking
                 close_col = 'Close' if 'Close' in df.columns else '4. close'
+                vol_col = 'Volume' if 'Volume' in df.columns else '5. volume'
+                
                 close_series = df[close_col].astype(float)
+                vol_series = df[vol_col].astype(float)
                 
                 current_price = float(close_series.iloc[-1])
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
+                
+                # Calculate 30-day historical trading volume baseline
+                avg_volume_30d = float(vol_series.rolling(window=30).mean().iloc[-1])
                 
                 # Compute Relative Strength Index (RSI 14)
                 delta = close_series.diff()
@@ -196,11 +198,13 @@ with tab_radar:
                 dist_to_50 = ((current_price - sma_50) / sma_50) * 100
                 dist_to_200 = ((current_price - sma_200) / sma_200) * 100
                 
+                # UPDATED: Rearranged keys directly into your requested view layout
                 screened_data.append({
                     "Ticker": ticker,
                     "Price": f"${current_price:.2f}",
                     "Structure": status,
-                    "RSI (14)": round(rsi, 1),
+                    "RSI (14)": f"{rsi:.1f}",                     # Moved to 3rd position, string formatted
+                    "Avg Volume (30D)": f"{avg_volume_30d:,.0f}",  # Added to 4th position, comma formatted
                     "SMA 50 Support": f"${sma_50:.2f}",
                     "Dist to SMA 50": f"{dist_to_50:+.1f}%",
                     "SMA 200 Floor": f"${sma_200:.2f}",
