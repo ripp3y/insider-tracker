@@ -291,7 +291,6 @@ with tab_radar:
                     else:
                         display_200, dist_to_200_str = "N/A", "0.0%"
 
-                # FIXED: Structural closure of dictionary assignment blocks
                 processed_records.append({
                     "Ticker": ticker, 
                     "Price": f"${current_price:.2f}", 
@@ -310,51 +309,4 @@ with tab_radar:
         return processed_records
 
     # Dynamic execution filter block logic
-    if len(selected_comparisons) >= 2:
-        with st.spinner("Isolating comparative data metrics..."):
-            comp_raw_data = fetch_raw_market_data(selected_comparisons)
-            comp_records = process_radar_metrics(comp_raw_data)
-            
-            if comp_records:
-                comp_df = pd.DataFrame(comp_records).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-                st.info(f"⚡ Side-by-Side Comparison Matrix ({len(selected_comparisons)} Assets Isolated)")
-                
-                def style_comp_rows(val):
-                    if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.25); font-weight: bold;"
-                    elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.25);"
-                    elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.25);"
-                    elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.25); font-weight: bold;"
-                    return ""
-                    
-                st.dataframe(
-                    comp_df.style.map(style_comp_rows, subset=["Structure"]),
-                    use_container_width=True,
-                    hide_index=True
-                )
-            st.markdown("---")
-
-    if st.button("🔄 Execute Full Watchlist Radar Scan"):
-        with st.spinner("Compiling multi-timeframe structural trends..."):
-            market_data = fetch_raw_market_data(st.session_state.watchlist)
-            screened_data = process_radar_metrics(market_data)
-
-        if screened_data:
-            radar_df = pd.DataFrame(screened_data).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-            def style_structure_rows(val):
-                if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
-                elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.15);"
-                elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.15);"
-                elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
-                return ""
-            st.dataframe(radar_df.style.map(style_structure_rows, subset=["Structure"]), use_container_width=True, hide_index=True)
-        else:
-            st.info("The watchlist is empty or data servers are congested. Load tickers to ignite.")
-
-# ──────────────────────────────────────────────────────────
-# TAB 3: LIVE INSTITUTIONAL DISTRIBUTION ENGINE 
-# ──────────────────────────────────────────────────────────
-with tab_institutional:
-    st.subheader("Institutional Whales Tracking Matrix")
-    st.markdown("Isolates anomalous trading footprint trends. Identifies heavy institutional loading vs. aggressive retail distribution.")
-    
-    if st.button
+    if len(selected_comparisons) >=
