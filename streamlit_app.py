@@ -52,11 +52,11 @@ lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3,
 # ──────────────────────────────────────────────────────────
 tab_insider, tab_radar = st.tabs(["🕵️‍♂️ Live C-Suite Insiders", "📈 Structural Uptrend Radar"])
 
-# Instantiating standard QueryApi to parse raw EDGAR Form 4 fields
+# Instantiating standard QueryApi engine
 query_api = QueryApi(api_key=SEC_API_KEY)
 
 # ──────────────────────────────────────────────────────────
-# TAB 1: INSIDER TRADING LOGIC (STANDARD QUERY API ALIGNMENT)
+# TAB 1: INSIDER TRADING LOGIC (FIXED NESTED JSON PARSING)
 # ──────────────────────────────────────────────────────────
 with tab_insider:
     st.subheader("Real-Time Corporate Insider Outlays")
@@ -66,10 +66,10 @@ with tab_insider:
     def fetch_high_conviction_insiders(days_to_search):
         start_date = (datetime.now() - timedelta(days=days_to_search)).strftime('%Y-%m-%d')
         
-        # Build standard Lucene JSON payload matched to standard QueryApi specs
+        # Exact Lucene search string matching standard Query API fields
         lucene_query = (
             f"formType:\"4\" AND "
-            f"periodOfReport:[{start_date} TO *] AND "
+            f"filedAt:[{start_date} TO *] AND "
             f"transactions.transactionCode:\"P\" AND "
             f"transactions.isRule10b51:\"false\""
         )
@@ -87,24 +87,26 @@ with tab_insider:
             parsed_trades = []
             
             for filing in filings:
-                # Handle standard query structure properties mapping securely
-                ticker = filing.get("ticker", "N/A")
-                company_name = filing.get("companyName", "N/A")
+                # FIXED: Pull data from the properly nested SEC JSON paths
+                issuer = filing.get("issuer", {})
+                ticker = issuer.get("tradingSymbol", "N/A")
+                company_name = issuer.get("name", "N/A")
                 
-                # Dig into the transaction arrays returned by the standard endpoints
-                for rpt_owner in filing.get("reportingOwners", []):
-                    insider_name = rpt_owner.get("name", "N/A")
-                    relationship = rpt_owner.get("relationship", {})
-                    
-                    role = "Other"
-                    if relationship.get("isOfficer") or relationship.get("isCeo"):
-                        role = f"Officer ({relationship.get('officerTitle', 'Exec')})"
-                    elif relationship.get("isDirector"):
-                        role = "Director"
-                    elif relationship.get("isTenPercentOwner"):
-                        role = "10% Owner"
+                # Check relationship and owner detail paths
+                reporting_owner = filing.get("reportingOwner", {})
+                insider_name = reporting_owner.get("name", "N/A")
+                
+                is_director = reporting_owner.get("isDirector", False)
+                is_officer = reporting_owner.get("isOfficer", False)
+                officer_title = reporting_owner.get("officerTitle", "")
+                
+                role = "Other"
+                if "CEO" in str(officer_title).upper(): role = "CEO"
+                elif is_officer: role = f"Officer ({officer_title})" if officer_title else "Officer"
+                elif is_director: role = "Director"
 
-                for tx in filing.get("transactions", []):
+                # Parse transactions block safely
+                for tx in filing.get("nonDerivativeTransactions", []):
                     if tx.get("transactionCode") == "P" and str(tx.get("isRule10b51")).lower() != "true":
                         shares = float(tx.get("transactionShares", 0) or 0)
                         price = float(tx.get("transactionPricePerShare", 0) or 0)
@@ -127,6 +129,7 @@ with tab_insider:
                                 "Total Outlay": total_value,
                                 "Position Jump": f"+{position_increase_pct:.1f}%" if shares_owned_after else "New Stake"
                             })
+                            
             df = pd.DataFrame(parsed_trades)
             return df.sort_values(by="Total Outlay", ascending=False).reset_index(drop=True) if not df.empty else pd.DataFrame()
         except Exception as e:
