@@ -39,8 +39,7 @@ if not AV_API_KEY:
 else:
     st.sidebar.success("🔑 Market Data Pipeline Secure.")
 
-# Premium Toggle to bypass pacing delays if you upgrade keys later
-av_tier = st.sidebar.selectbox("Alpha Vantage Key Tier", ["Free Tier (5 req/min)", "Premium (Uncapped)"])
+av_tier = st.sidebar.selectbox("Alpha Vantage Key Tier", ["Free Tier (Compact)", "Premium (Uncapped)"])
 
 if not SEC_API_KEY or not AV_API_KEY:
     st.warning("⚠️ Please provide both API keys in the sidebar or Cloud Secrets to run the terminal components.")
@@ -149,35 +148,45 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (RATE-LIMIT IMMUNIZED)
+# TAB 2: STRUCTURAL UPTREND RADAR (COMPACT MODE OPTIMIZED)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Scans key moving averages via Alpha Vantage pipeline.")
+    st.markdown("Scans key moving averages via optimized compact pipeline to run within Free Tier restrictions.")
     
-    @st.cache_data(ttl=3600)  # Bumped cache to 1 hour to preserve your free tier limits
+    @st.cache_data(ttl=3600)
     def calculate_trend_metrics_av(ticker_list, api_key, tier):
         screened_data = []
         ts = TimeSeries(key=api_key, output_format='pandas')
         
-        # Streamlit progress bar tracking
         progress_bar = st.progress(0)
         status_text = st.empty()
+        
+        # Initial burst safeguard pause
+        time.sleep(2)
         
         for idx, ticker in enumerate(ticker_list):
             try:
                 status_text.text(f"Streaming market data for: {ticker} ({idx+1}/{len(ticker_list)})")
                 
-                df, meta = ts.get_daily(symbol=ticker, outputsize='full')
+                # FIXED: Removed outputsize='full' to remain compatible with Free tier
+                if tier == "Premium (Uncapped)":
+                    df, meta = ts.get_daily(symbol=ticker, outputsize='full')
+                else:
+                    df, meta = ts.get_daily(symbol=ticker, outputsize='compact')
+                    
                 df = df.sort_index(ascending=True)
 
-                if df.empty or len(df) < 200: 
+                if df.empty or len(df) < 50: 
+                    st.warning(f"Skipped {ticker}: Insufficient historical data.")
                     continue
 
                 close_series = df['4. close'].astype(float)
                 current_price = float(close_series.iloc[-1])
+                
+                # Calculating moving averages within the 100-day available limit
+                sma_20 = float(close_series.rolling(window=20).mean().iloc[-1])
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
-                sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
                 
                 delta = close_series.diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -185,45 +194,50 @@ with tab_radar:
                 rs = gain / (loss + 1e-9)
                 rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 
-                if current_price > sma_50 and sma_50 > sma_200:
+                if current_price > sma_20 and sma_20 > sma_50:
                     status = "🔥 Strong Uptrend"
-                elif current_price > sma_200 and current_price <= sma_50:
+                elif current_price > sma_50 and current_price <= sma_20:
                     status = "⏳ Support Test"
                 else:
                     status = "⚠️ Structural Breakdown"
                     
+                dist_to_20 = ((current_price - sma_20) / sma_20) * 100
                 dist_to_50 = ((current_price - sma_50) / sma_50) * 100
-                dist_to_200 = ((current_price - sma_200) / sma_200) * 100
                 
                 screened_data.append({
                     "Ticker": ticker,
                     "Price": round(current_price, 2),
                     "Structure": status,
                     "RSI (14)": round(rsi, 1),
+                    "SMA 20 Level": round(sma_20, 2),
+                    "Dist to SMA 20": f"{dist_to_20:+.1f}%",
                     "SMA 50 Support": round(sma_50, 2),
                     "Dist to SMA 50": f"{dist_to_50:+.1f}%",
-                    "SMA 200 Floor": round(sma_200, 2),
-                    "Dist to SMA 200": f"{dist_to_200:+.1f}%",
                     "raw_sort": dist_to_50
                 })
                 
                 progress_bar.progress((idx + 1) / len(ticker_list))
                 
-                # If on free tier, wait 12 seconds per ticker to cleanly separate calls
-                if tier == "Free Tier (5 req/min)" and idx < len(ticker_list) - 1:
-                    for remaining in range(12, 0, -1):
+                if tier == "Free Tier (Compact)" and idx < len(ticker_list) - 1:
+                    for remaining in range(14, 0, -1):
                         status_text.text(f"Cooling down API to avoid rate limits... ({remaining}s remaining before next pull)")
                         time.sleep(1)
                         
             except Exception as e:
-                st.warning(f"Skipped {ticker}: {str(e)}")
+                # Catching strings returned by Alpha Vantage API messages
+                error_msg = str(e)
+                if "premium" in error_msg.lower():
+                    st.error(f"🛑 Alpha Vantage Tier Conflict: Free keys require 'Free Tier (Compact)' selected in sidebar.")
+                    break
+                else:
+                    st.warning(f"Skipped {ticker}: {error_msg}")
                 
         status_text.empty()
         progress_bar.empty()
         return pd.DataFrame(screened_data)
 
     if st.button("🔄 Execute Matrix Scan"):
-        with st.spinner("Analyzing multi-timeframe trends..."):
+        with st.spinner("Analyzing structural trends..."):
             radar_df = calculate_trend_metrics_av(MASTER_WATCHLIST, AV_API_KEY, av_tier)
 
         if not radar_df.empty:
@@ -239,4 +253,4 @@ with tab_radar:
                 use_container_width=True
             )
         else:
-            st.info("No data returned. Check the warnings above for API limit statuses.")
+            st.info("No matrix data processed. Adjust settings or verify limits.")
