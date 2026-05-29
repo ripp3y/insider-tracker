@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 from datetime import datetime, timedelta
 from sec_api import QueryApi
 from alpha_vantage.timeseries import TimeSeries
@@ -12,7 +13,7 @@ st.set_page_config(page_title="Asymmetry Dashboard", layout="wide")
 MASTER_WATCHLIST = [
     "FIX", "VRT", "CIEN", "SMCI", "BE", 
     "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
-    "SNDK", "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
+    "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
 ]
 
 # Load API Keys from Streamlit Secrets securely
@@ -24,13 +25,11 @@ AV_API_KEY = st.secrets.get("AV_API_KEY", "")
 # ──────────────────────────────────────────────────────────
 st.sidebar.title("🦅 Asymmetry Control Panel")
 
-# SEC Key Validation
 if not SEC_API_KEY:
     SEC_API_KEY = st.sidebar.text_input("Enter SEC-API.io Key:", type="password")
 else:
     st.sidebar.success("🔑 SEC Connection Authenticated.")
 
-# Alpha Vantage Key Validation
 if not AV_API_KEY:
     AV_API_KEY = st.sidebar.text_input(
         "Enter Alpha Vantage Key:", 
@@ -39,6 +38,9 @@ if not AV_API_KEY:
     )
 else:
     st.sidebar.success("🔑 Market Data Pipeline Secure.")
+
+# Premium Toggle to bypass pacing delays if you upgrade keys later
+av_tier = st.sidebar.selectbox("Alpha Vantage Key Tier", ["Free Tier (5 req/min)", "Premium (Uncapped)"])
 
 if not SEC_API_KEY or not AV_API_KEY:
     st.warning("⚠️ Please provide both API keys in the sidebar or Cloud Secrets to run the terminal components.")
@@ -51,7 +53,6 @@ lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3,
 # ──────────────────────────────────────────────────────────
 tab_insider, tab_radar = st.tabs(["🕵️‍♂️ Live C-Suite Insiders", "📈 Structural Uptrend Radar"])
 
-# Instantiating standard QueryApi engine
 query_api = QueryApi(api_key=SEC_API_KEY)
 
 # ──────────────────────────────────────────────────────────
@@ -85,14 +86,11 @@ with tab_insider:
             parsed_trades = []
             
             for filing in filings:
-                # Safe checking for nested paths
                 issuer = filing.get("issuer", {})
-                if not issuer:
-                    continue
+                if not issuer: continue
                     
                 ticker = issuer.get("tradingSymbol", "N/A")
                 company_name = issuer.get("name", "N/A")
-                
                 reporting_owner = filing.get("reportingOwner", {})
                 insider_name = reporting_owner.get("name", "N/A") if reporting_owner else "N/A"
                 
@@ -151,27 +149,31 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (FIXED ALPHAVANTAGE COLUMNS)
+# TAB 2: STRUCTURAL UPTREND RADAR (RATE-LIMIT IMMUNIZED)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Scans key moving averages via Alpha Vantage pipeline to keep data moving smoothly without rate limits.")
+    st.markdown("Scans key moving averages via Alpha Vantage pipeline.")
     
-    @st.cache_data(ttl=1800)
-    def calculate_trend_metrics_av(ticker_list, api_key):
+    @st.cache_data(ttl=3600)  # Bumped cache to 1 hour to preserve your free tier limits
+    def calculate_trend_metrics_av(ticker_list, api_key, tier):
         screened_data = []
         ts = TimeSeries(key=api_key, output_format='pandas')
         
-        for ticker in ticker_list:
+        # Streamlit progress bar tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for idx, ticker in enumerate(ticker_list):
             try:
-                # Alpha Vantage returns an ascending sorted index with '1. open', '4. close' layout
+                status_text.text(f"Streaming market data for: {ticker} ({idx+1}/{len(ticker_list)})")
+                
                 df, meta = ts.get_daily(symbol=ticker, outputsize='full')
                 df = df.sort_index(ascending=True)
 
                 if df.empty or len(df) < 200: 
                     continue
 
-                # FIXED: Accessing columns exactly matching Alpha Vantage string syntax
                 close_series = df['4. close'].astype(float)
                 current_price = float(close_series.iloc[-1])
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
@@ -204,24 +206,37 @@ with tab_radar:
                     "Dist to SMA 200": f"{dist_to_200:+.1f}%",
                     "raw_sort": dist_to_50
                 })
+                
+                progress_bar.progress((idx + 1) / len(ticker_list))
+                
+                # If on free tier, wait 12 seconds per ticker to cleanly separate calls
+                if tier == "Free Tier (5 req/min)" and idx < len(ticker_list) - 1:
+                    for remaining in range(12, 0, -1):
+                        status_text.text(f"Cooling down API to avoid rate limits... ({remaining}s remaining before next pull)")
+                        time.sleep(1)
+                        
             except Exception as e:
-                pass
+                st.warning(f"Skipped {ticker}: {str(e)}")
+                
+        status_text.empty()
+        progress_bar.empty()
         return pd.DataFrame(screened_data)
 
-    with st.spinner("Analyzing multi-timeframe trends via Alpha Vantage..."):
-        radar_df = calculate_trend_metrics_av(MASTER_WATCHLIST, AV_API_KEY)
+    if st.button("🔄 Execute Matrix Scan"):
+        with st.spinner("Analyzing multi-timeframe trends..."):
+            radar_df = calculate_trend_metrics_av(MASTER_WATCHLIST, AV_API_KEY, av_tier)
 
-    if not radar_df.empty:
-        radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-        
-        st.dataframe(
-            radar_df.style.map(
-                lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
-                else ("background-color: rgba(255, 193, 7, 0.15);" if "⏳" in str(val)
-                else ("background-color: rgba(220, 53, 69, 0.15);" if "⚠️" in str(val) else "")),
-                subset=["Structure"]
-            ),
-            use_container_width=True
-        )
-    else:
-        st.info("Waiting for pipeline stream data to populate. Ensure Alpha Vantage API key is valid.")
+        if not radar_df.empty:
+            radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
+            
+            st.dataframe(
+                radar_df.style.map(
+                    lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
+                    else ("background-color: rgba(255, 193, 7, 0.15);" if "⏳" in str(val)
+                    else ("background-color: rgba(220, 53, 69, 0.15);" if "⚠️" in str(val) else "")),
+                    subset=["Structure"]
+                ),
+                use_container_width=True
+            )
+        else:
+            st.info("No data returned. Check the warnings above for API limit statuses.")
