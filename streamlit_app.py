@@ -212,7 +212,17 @@ with tab_insider:
         
         display_insider = insider_df.copy()
         display_insider["Total Outlay"] = display_insider["Total Outlay"].apply(lambda x: f"${x:,.2f}")
-        st.dataframe(display_insider, use_container_width=True)
+        
+        st.dataframe(
+            display_insider,
+            use_container_width=True,
+            column_config={
+                "Filing Date": st.column_config.TextColumn(width="small"),
+                "Ticker": st.column_config.TextColumn(width="small"),
+                "Insider Trader": st.column_config.TextColumn(width="medium"),
+                "Total Outlay": st.column_config.TextColumn(width="medium")
+            }
+        )
     else:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
@@ -308,7 +318,7 @@ with tab_radar:
                 pass
         return processed_records
 
-    # FIXED: Appended trailing colon to fix the side-by-side conditional engine 
+    # Comparative Selection Rendering Engine
     if len(selected_comparisons) >= 2:
         with st.spinner("Isolating comparative data metrics..."):
             comp_raw_data = fetch_raw_market_data(selected_comparisons)
@@ -328,7 +338,13 @@ with tab_radar:
                 st.dataframe(
                     comp_df.style.map(style_comp_rows, subset=["Structure"]),
                     use_container_width=True,
-                    hide_index=True
+                    hide_index=True,
+                    column_config={
+                        "Structure": st.column_config.TextColumn(width="medium"),
+                        "RSI (14)": st.column_config.TextColumn(width="small"),
+                        "1-Mo Return": st.column_config.TextColumn(width="small"),
+                        "Vol Surge (20D MA)": st.column_config.TextColumn(width="medium")
+                    }
                 )
             st.markdown("---")
 
@@ -345,7 +361,17 @@ with tab_radar:
                 elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.15);"
                 elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
                 return ""
-            st.dataframe(radar_df.style.map(style_structure_rows, subset=["Structure"]), use_container_width=True, hide_index=True)
+            st.dataframe(
+                radar_df.style.map(style_structure_rows, subset=["Structure"]), 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Structure": st.column_config.TextColumn(width="medium"),
+                    "RSI (14)": st.column_config.TextColumn(width="small"),
+                    "1-Mo Return": st.column_config.TextColumn(width="small"),
+                    "Vol Surge (20D MA)": st.column_config.TextColumn(width="medium")
+                }
+            )
         else:
             st.info("The watchlist is empty or data servers are congested. Load tickers to ignite.")
 
@@ -418,6 +444,15 @@ with tab_institutional:
                 if "🐋" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
                 elif "🚨" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
                 return ""
-            st.dataframe(whale_df.style.map(style_whale_rows, subset=["Whale Flow Status"]), use_container_width=True, hide_index=True)
+            st.dataframe(
+                whale_df.style.map(style_whale_rows, subset=["Whale Flow Status"]), 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Whale Flow Status": st.column_config.TextColumn(width="medium"),
+                    "Vol Surge (20D MA)": st.column_config.TextColumn(width="medium"),
+                    "Net Change": st.column_config.TextColumn(width="small")
+                }
+            )
         else:
             st.info("Load tickers in your active list and fire the footprint scanner.")
