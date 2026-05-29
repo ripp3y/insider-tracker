@@ -51,7 +51,7 @@ SEC_API_KEY = st.secrets.get("SEC_API_KEY", "")
 st.sidebar.title("🦅 Asymmetry Control Panel")
 
 if not SEC_API_KEY:
-    SEC_API_KEY = st.sidebar.text_input("Enter SEC-API.io Key:", type="password")
+    SEC_API_KEY = st.sidebar.text_input("Enter SEC-CONNECTION Key:", type="password")
 else:
     st.sidebar.success("🔑 SEC Connection Authenticated.")
 
@@ -213,15 +213,10 @@ with tab_insider:
         display_insider = insider_df.copy()
         display_insider["Total Outlay"] = display_insider["Total Outlay"].apply(lambda x: f"${x:,.2f}")
         
+        # Cleaned width definitions to let natural expansion prevent truncation
         st.dataframe(
             display_insider,
-            use_container_width=True,
-            column_config={
-                "Filing Date": st.column_config.TextColumn(width="small"),
-                "Ticker": st.column_config.TextColumn(width="small"),
-                "Insider Trader": st.column_config.TextColumn(width="medium"),
-                "Total Outlay": st.column_config.TextColumn(width="medium")
-            }
+            use_container_width=True
         )
     else:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
@@ -301,17 +296,18 @@ with tab_radar:
                     else:
                         display_200, dist_to_200_str = "N/A", "0.0%"
 
+                # Remapped keys with clear emojis to maximize viewability without squeezing strings
                 processed_records.append({
                     "Ticker": ticker, 
                     "Price": f"${current_price:.2f}", 
                     "Structure": status,
-                    "RSI (14)": f"{rsi:.1f}", 
-                    "1-Mo Return": f"{perf_1m:+.1f}%", 
-                    "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",
-                    "SMA 50 Support": display_50, 
-                    "Dist to SMA 50": dist_to_50_str, 
-                    "SMA 200 Floor": display_200,
-                    "Dist to SMA 200": dist_to_200_str, 
+                    "RSI": f"{rsi:.1f}", 
+                    "1M Ret": f"{perf_1m:+.1f}%", 
+                    "Vol Surge": f"{volume_surge_pct:+.1f}%",
+                    "SMA 50": display_50, 
+                    "🚀 SMA 50": dist_to_50_str, 
+                    "SMA 200": display_200,
+                    "🛡️ SMA 200": dist_to_200_str, 
                     "raw_sort": perf_1m
                 })
             except Exception:
@@ -335,16 +331,11 @@ with tab_radar:
                     elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.25); font-weight: bold;"
                     return ""
                     
+                # Dropped explicit text column restrictions so pandas/streamlit handles mobile wrapping organically
                 st.dataframe(
                     comp_df.style.map(style_comp_rows, subset=["Structure"]),
                     use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Structure": st.column_config.TextColumn(width="medium"),
-                        "RSI (14)": st.column_config.TextColumn(width="small"),
-                        "1-Mo Return": st.column_config.TextColumn(width="small"),
-                        "Vol Surge (20D MA)": st.column_config.TextColumn(width="medium")
-                    }
+                    hide_index=True
                 )
             st.markdown("---")
 
@@ -364,13 +355,7 @@ with tab_radar:
             st.dataframe(
                 radar_df.style.map(style_structure_rows, subset=["Structure"]), 
                 use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "Structure": st.column_config.TextColumn(width="medium"),
-                    "RSI (14)": st.column_config.TextColumn(width="small"),
-                    "1-Mo Return": st.column_config.TextColumn(width="small"),
-                    "Vol Surge (20D MA)": st.column_config.TextColumn(width="medium")
-                }
+                hide_index=True
             )
         else:
             st.info("The watchlist is empty or data servers are congested. Load tickers to ignite.")
@@ -411,13 +396,13 @@ with tab_institutional:
                     intraday_direction = current_price - current_open
                     
                     if price_change_pct > 0 and intraday_direction > 0:
-                        flow_type = "🐋 Institutional Accumulation"
+                        flow_type = "🐋 Accumulation"
                         sort_score = vol_surge_pct
                     elif price_change_pct < 0 and intraday_direction < 0:
-                        flow_type = "🚨 Heavy Distribution"
+                        flow_type = "🚨 Distribution"
                         sort_score = vol_surge_pct * 2
                     else:
-                        flow_type = "💨 Mixed / Light Retail"
+                        flow_type = "💨 Mixed Flow"
                         sort_score = -500.0 + vol_surge_pct
 
                     rsi_lookback = min(14, available_bars - 1)
@@ -431,9 +416,13 @@ with tab_institutional:
                         rsi = 50.0
 
                     whale_data.append({
-                        "Ticker": ticker, "Price": f"${current_price:.2f}", "Net Change": f"{price_change_pct:+.2f}%",
-                        "Whale Flow Status": flow_type, "Vol Surge (20D MA)": f"{vol_surge_pct:+.1f}%",
-                        "RSI (14)": f"{rsi:.1f}", "raw_sort": sort_score
+                        "Ticker": ticker, 
+                        "Price": f"${current_price:.2f}", 
+                        "Net Chg": f"{price_change_pct:+.2f}%",
+                        "Whale Flow": flow_type, 
+                        "Vol Surge": f"{vol_surge_pct:+.1f}%",
+                        "RSI": f"{rsi:.1f}", 
+                        "raw_sort": sort_score
                     })
                 except Exception:
                     pass
@@ -445,14 +434,9 @@ with tab_institutional:
                 elif "🚨" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
                 return ""
             st.dataframe(
-                whale_df.style.map(style_whale_rows, subset=["Whale Flow Status"]), 
+                whale_df.style.map(style_whale_rows, subset=["Whale Flow"]), 
                 use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "Whale Flow Status": st.column_config.TextColumn(width="medium"),
-                    "Vol Surge (20D MA)": st.column_config.TextColumn(width="medium"),
-                    "Net Change": st.column_config.TextColumn(width="small")
-                }
+                hide_index=True
             )
         else:
             st.info("Load tickers in your active list and fire the footprint scanner.")
