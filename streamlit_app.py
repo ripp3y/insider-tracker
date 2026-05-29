@@ -11,7 +11,6 @@ st.set_page_config(page_title="Asymmetry Dashboard", layout="wide")
 
 # Initialize persistent session state memory for our watch matrix
 if "watchlist" not in st.session_state:
-    # Seed with your core baseline assets
     st.session_state.watchlist = [
         "FIX", "VRT", "CIEN", "SMCI", "BE", 
         "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
@@ -41,10 +40,9 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("🛠️ Watchlist Asset Matrix")
 
 # 1. Bulk Add Tickers Interface
-bulk_input = st.sidebar.text_input("Add New Ticker(s) (Comma Separated):", placeholder="e.g., SOXX, XSD, AMD, URA")
+bulk_input = st.sidebar.text_input("Add New Ticker(s) (Comma Separated):", placeholder="e.g., DRAM, AXTI, MTZ, SOXX")
 if st.sidebar.button("➕ Inject into Matrix"):
     if bulk_input:
-        # Split tokens, strip whitespace, convert to uppercase, and filter out empties
         new_tickers = [t.strip().upper() for t in bulk_input.split(",") if t.strip()]
         added_count = 0
         for ticker in new_tickers:
@@ -63,7 +61,6 @@ if st.sidebar.button("❌ Remove Selected"):
         st.sidebar.warning(f"Purged {ticker_to_remove} from tracking matrix.")
         st.rerun()
 
-# Display current count metrics so you know exactly when you hit your target
 st.sidebar.info(f"Total Active Trackers: **{len(st.session_state.watchlist)}**")
 
 # ──────────────────────────────────────────────────────────
@@ -167,11 +164,11 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (DYNAMIC PIPELINE)
+# TAB 2: STRUCTURAL UPTREND RADAR (SELF-HEALING TIMEFRAMES)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Filtered for immediate 20-day momentum. Assets coasting flat or breaking down short-term are explicitly downgraded.")
+    st.markdown("Filtered for immediate 20-day momentum. Handles recently debuted assets and IPO allocations automatically.")
     
     @st.cache_data(ttl=600)
     def calculate_trend_metrics_hardened(ticker_list):
@@ -188,20 +185,19 @@ with tab_radar:
         for ticker in ticker_list:
             df = pd.DataFrame()
             
-            # Safe multi-column extraction checking
             if not batch_data.empty and len(ticker_list) > 1 and ticker in batch_data.columns.levels[0]:
                 df = batch_data[ticker].dropna()
             elif not batch_data.empty and len(ticker_list) == 1:
                 df = batch_data.dropna()
                 
-            if df.empty or len(df) < 200:
+            if df.empty or len(df) < 5:
                 try:
                     asset = yf.Ticker(ticker)
                     df = asset.history(period="1y").dropna()
                 except Exception:
                     continue
 
-            if df.empty or len(df) < 200:
+            if df.empty or len(df) < 5:
                 continue
 
             try:
@@ -212,38 +208,77 @@ with tab_radar:
                 vol_series = df[vol_col].astype(float)
                 
                 current_price = float(close_series.iloc[-1])
-                sma_20 = float(close_series.rolling(window=20).mean().iloc[-1])
-                sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
-                sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
+                available_bars = len(close_series)
                 
-                price_1m_ago = float(close_series.iloc[-21])
-                perf_1m = ((current_price - price_1m_ago) / price_1m_ago) * 100
-                
+                # Check for relative volume surge over a baseline
                 current_volume = float(vol_series.iloc[-1])
-                avg_volume_20d = float(vol_series.rolling(window=20).mean().iloc[-1])
+                vol_lookback = min(20, available_bars)
+                avg_volume_baseline = float(vol_series.rolling(window=vol_lookback).mean().iloc[-1])
                 
                 volume_surge_pct = 0.0
-                if avg_volume_20d > 0:
-                    volume_surge_pct = ((current_volume - avg_volume_20d) / avg_volume_20d) * 100
+                if avg_volume_baseline > 0:
+                    volume_surge_pct = ((current_volume - avg_volume_baseline) / avg_volume_baseline) * 100
                 
-                delta = close_series.diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / (loss + 1e-9)
-                rsi = float(100 - (100 / (1 + rs)).iloc[-1])
-                
-                if current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200:
-                    status = "🔥 Strong Uptrend"
-                elif current_price <= sma_20 and current_price > sma_50:
-                    status = "💤 Stalling / Flat"
-                elif current_price <= sma_50 and current_price > sma_200:
-                    status = "⏳ Support Test"
+                # Compute Relative Strength Index (RSI 14)
+                rsi_lookback = min(14, available_bars - 1)
+                if rsi_lookback >= 2:
+                    delta = close_series.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=rsi_lookback).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_lookback).mean()
+                    rs = gain / (loss + 1e-9)
+                    rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 else:
-                    status = "⚠️ Structural Breakdown"
+                    rsi = 50.0
+
+                # 1-Month Return calc (falls back to max available bars for young stocks)
+                perf_lookback = min(21, available_bars)
+                price_past = float(close_series.iloc[-perf_lookback])
+                perf_1m = ((current_price - price_past) / price_past) * 100
+
+                # DYNAMIC CRITERIA BRANCHING FOR YOUNG ASSETS (e.g., DRAM)
+                if available_bars < 50:
+                    sma_short = float(close_series.rolling(window=min(10, available_bars)).mean().iloc[-1])
+                    sma_long = float(close_series.rolling(window=min(20, available_bars)).mean().iloc[-1])
                     
-                dist_to_50 = ((current_price - sma_50) / sma_50) * 100
-                dist_to_200 = ((current_price - sma_200) / sma_200) * 100
-                
+                    status_text = "✨ New Asset Track"
+                    if current_price > sma_short and sma_short > sma_long:
+                        status = "🔥 Strong Uptrend"
+                    elif current_price <= sma_short and current_price > sma_long:
+                        status = "💤 Stalling / Flat"
+                    else:
+                        status = "⚠️ Structural Breakdown"
+                    
+                    display_50 = "N/A (New)"
+                    dist_to_50_str = "0.0%"
+                    display_200 = "N/A (New)"
+                    dist_to_200_str = "0.0%"
+                else:
+                    # Standard execution loop for seasoned stocks
+                    sma_20 = float(close_series.rolling(window=20).mean().iloc[-1])
+                    sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
+                    sma_200 = float(close_series.rolling(window=200).mean().iloc[-1]) if available_bars >= 200 else sma_50
+                    
+                    if current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200:
+                        status = "🔥 Strong Uptrend"
+                    elif current_price <= sma_20 and current_price > sma_50:
+                        status = "💤 Stalling / Flat"
+                    elif current_price <= sma_50 and current_price > sma_200:
+                        status = "⏳ Support Test"
+                    else:
+                        status = "⚠️ Structural Breakdown"
+                        
+                    dist_to_50 = ((current_price - sma_50) / sma_50) * 100
+                    display_50 = f"${sma_50:.2f}"
+                    dist_to_50_str = f"{dist_to_50:+.1f}%"
+                    
+                    if available_bars >= 200:
+                        dist_to_200 = ((current_price - sma_200) / sma_200) * 100
+                        display_200 = f"${sma_200:.2f}"
+                        dist_to_200_str = f"{dist_to_200:+.1f}%"
+                    else:
+                        display_200 = "N/A"
+                        dist_to_200_str = "0.0%"
+
                 screened_data.append({
                     "Ticker": ticker,
                     "Price": f"${current_price:.2f}",
@@ -251,10 +286,10 @@ with tab_radar:
                     "RSI (14)": f"{rsi:.1f}",
                     "1-Mo Return": f"{perf_1m:+.1f}%",
                     "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",
-                    "SMA 50 Support": f"${sma_50:.2f}",
-                    "Dist to SMA 50": f"{dist_to_50:+.1f}%",
-                    "SMA 200 Floor": f"${sma_200:.2f}",
-                    "Dist to SMA 200": f"{dist_to_200:+.1f}%",
+                    "SMA 50 Support": display_50,
+                    "Dist to SMA 50": dist_to_50_str,
+                    "SMA 200 Floor": display_200,
+                    "Dist to SMA 200": dist_to_200_str,
                     "raw_sort": perf_1m
                 })
             except Exception:
@@ -264,7 +299,6 @@ with tab_radar:
 
     if st.button("🔄 Execute Hardened Matrix Scan"):
         with st.spinner("Compiling multi-timeframe structural trends..."):
-            # LINKED: Pulls straight from the dynamic session state list instead of static arrays
             radar_df = calculate_trend_metrics_hardened(st.session_state.watchlist)
 
         if not radar_df.empty:
