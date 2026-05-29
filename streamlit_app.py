@@ -135,73 +135,86 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (FAST INSTANT BATCH ENGINE)
+# TAB 2: STRUCTURAL UPTREND RADAR (SELF-HEALING ENGINE)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Uses an optimized instant fast-batch query pipeline to build your trend architecture without rate limits.")
+    st.markdown("Uses an instant fast-batch query pipeline with an automated fallback mechanism to circumvent server rate limits.")
     
-    @st.cache_data(ttl=900)
-    def calculate_trend_metrics_fast(ticker_list):
+    @st.cache_data(ttl=600)
+    def calculate_trend_metrics_hardened(ticker_list):
         screened_data = []
+        
+        # Step 1: Fire consolidated batch call with single-threading to dodge firewall filters
+        tickers_string = " ".join(ticker_list)
         try:
-            # Step 1: Execute ONE single batch call for all tickers (prevents Cloud IP block)
-            tickers_string = " ".join(ticker_list)
-            batch_data = yf.download(tickers_string, period="1y", group_by="ticker", progress=False)
+            batch_data = yf.download(tickers_string, period="1y", group_by="ticker", threads=False, progress=False)
+        except Exception:
+            batch_data = pd.DataFrame()
             
-            for ticker in ticker_list:
+        for ticker in ticker_list:
+            df = pd.DataFrame()
+            
+            # Extract from batch if data exists
+            if not batch_data.empty and ticker in batch_data.columns.levels[0]:
+                df = batch_data[ticker].dropna()
+                
+            # Step 2: Fallback Logic—If batch was dropped or rate-limited, isolate the asset independently
+            if df.empty or len(df) < 200:
                 try:
-                    # Isolate ticker sub-dataframe safely
-                    if ticker in batch_data.columns.levels[0]:
-                        df = batch_data[ticker].dropna()
-                    else:
-                        continue
-                        
-                    if df.empty or len(df) < 200:
-                        continue
+                    asset = yf.Ticker(ticker)
+                    df = asset.history(period="1y").dropna()
+                except Exception:
+                    continue
 
-                    current_price = float(df['Close'].iloc[-1])
-                    sma_50 = float(df['Close'].rolling(window=50).mean().iloc[-1])
-                    sma_200 = float(df['Close'].rolling(window=200).mean().iloc[-1])
+            if df.empty or len(df) < 200:
+                continue
+
+            try:
+                # Use standard close series tracking
+                close_col = 'Close' if 'Close' in df.columns else '4. close'
+                close_series = df[close_col].astype(float)
+                
+                current_price = float(close_series.iloc[-1])
+                sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
+                sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
+                
+                # Compute Relative Strength Index (RSI 14)
+                delta = close_series.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / (loss + 1e-9)
+                rsi = float(100 - (100 / (1 + rs)).iloc[-1])
+                
+                if current_price > sma_50 and sma_50 > sma_200:
+                    status = "🔥 Strong Uptrend"
+                elif current_price > sma_200 and current_price <= sma_50:
+                    status = "⏳ Support Test"
+                else:
+                    status = "⚠️ Structural Breakdown"
                     
-                    # Compute Relative Strength Index (RSI 14)
-                    delta = df['Close'].diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                    rs = gain / (loss + 1e-9)
-                    rsi = float(100 - (100 / (1 + rs)).iloc[-1])
-                    
-                    if current_price > sma_50 and sma_50 > sma_200:
-                        status = "🔥 Strong Uptrend"
-                    elif current_price > sma_200 and current_price <= sma_50:
-                        status = "⏳ Support Test"
-                    else:
-                        status = "⚠️ Structural Breakdown"
-                        
-                    dist_to_50 = ((current_price - sma_50) / sma_50) * 100
-                    dist_to_200 = ((current_price - sma_200) / sma_200) * 100
-                    
-                    screened_data.append({
-                        "Ticker": ticker,
-                        "Price": round(current_price, 2),
-                        "Structure": status,
-                        "RSI (14)": round(rsi, 1),
-                        "SMA 50 Support": round(sma_50, 2),
-                        "Dist to SMA 50": f"{dist_to_50:+.1f}%",
-                        "SMA 200 Floor": round(sma_200, 2),
-                        "Dist to SMA 200": f"{dist_to_200:+.1f}%",
-                        "raw_sort": dist_to_50
-                    })
-                except:
-                    pass
-        except Exception as e:
-            st.error(f"Batch Download Engine Error: {e}")
-            
+                dist_to_50 = ((current_price - sma_50) / sma_50) * 100
+                dist_to_200 = ((current_price - sma_200) / sma_200) * 100
+                
+                screened_data.append({
+                    "Ticker": ticker,
+                    "Price": f"${current_price:.2f}",
+                    "Structure": status,
+                    "RSI (14)": round(rsi, 1),
+                    "SMA 50 Support": f"${sma_50:.2f}",
+                    "Dist to SMA 50": f"{dist_to_50:+.1f}%",
+                    "SMA 200 Floor": f"${sma_200:.2f}",
+                    "Dist to SMA 200": f"{dist_to_200:+.1f}%",
+                    "raw_sort": dist_to_50
+                })
+            except Exception:
+                pass
+                
         return pd.DataFrame(screened_data)
 
-    if st.button("🔄 Execute Instant Matrix Scan"):
+    if st.button("🔄 Execute Hardened Matrix Scan"):
         with st.spinner("Compiling multi-timeframe structural trends..."):
-            radar_df = calculate_trend_metrics_fast(MASTER_WATCHLIST)
+            radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
 
         if not radar_df.empty:
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
@@ -216,4 +229,4 @@ with tab_radar:
                 use_container_width=True
             )
         else:
-            st.info("No matrix data generated. Click the button above to run the scan.")
+            st.info("The market data servers are heavily congested. Wait a few moments and run the scan again.")
