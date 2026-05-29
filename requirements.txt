@@ -3,3 +3,4 @@ pandas
 sec-api
 yfinance
 alpha_vantage
+plotly
