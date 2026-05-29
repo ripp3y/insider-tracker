@@ -135,11 +135,11 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (RE-ORDERED VISUAL MATRIX)
+# TAB 2: STRUCTURAL UPTREND RADAR (VOLUME SURGE METRICS)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Ordered structurally with key relative strength and liquidity filters positioned upfront.")
+    st.markdown("Tracks multi-timeframe structure alongside RSI overbought indicators and relative volume surge velocity.")
     
     @st.cache_data(ttl=600)
     def calculate_trend_metrics_hardened(ticker_list):
@@ -178,8 +178,13 @@ with tab_radar:
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
                 
-                # Calculate 30-day historical trading volume baseline
-                avg_volume_30d = float(vol_series.rolling(window=30).mean().iloc[-1])
+                # UPDATED: Calculate relative volume surge over a 20-day baseline
+                current_volume = float(vol_series.iloc[-1])
+                avg_volume_20d = float(vol_series.rolling(window=20).mean().iloc[-1])
+                
+                volume_surge_pct = 0.0
+                if avg_volume_20d > 0:
+                    volume_surge_pct = ((current_volume - avg_volume_20d) / avg_volume_20d) * 100
                 
                 # Compute Relative Strength Index (RSI 14)
                 delta = close_series.diff()
@@ -198,13 +203,12 @@ with tab_radar:
                 dist_to_50 = ((current_price - sma_50) / sma_50) * 100
                 dist_to_200 = ((current_price - sma_200) / sma_200) * 100
                 
-                # UPDATED: Rearranged keys directly into your requested view layout
                 screened_data.append({
                     "Ticker": ticker,
                     "Price": f"${current_price:.2f}",
                     "Structure": status,
-                    "RSI (14)": f"{rsi:.1f}",                     # Moved to 3rd position, string formatted
-                    "Avg Volume (30D)": f"{avg_volume_30d:,.0f}",  # Added to 4th position, comma formatted
+                    "RSI (14)": f"{rsi:.1f}",
+                    "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",  # Replaced raw column with formatted percentage deviation
                     "SMA 50 Support": f"${sma_50:.2f}",
                     "Dist to SMA 50": f"{dist_to_50:+.1f}%",
                     "SMA 200 Floor": f"${sma_200:.2f}",
