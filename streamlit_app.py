@@ -224,13 +224,15 @@ with tab_radar:
         with st.spinner("Compiling multi-timeframe structural trends..."):
             radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
 
+            if st.button("🔄 Execute Hardened Matrix Scan"):
+        with st.spinner("Compiling multi-timeframe structural trends..."):
+            radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
+
         if not radar_df.empty:
+            # 1. Properly sort and strip out the raw temporary sorting key
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
             
-                    if not radar_df.empty:
-            radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-            
-            # Use st.dataframe with hide_index=True to strip out the scrambled row numbers
+            # 2. Build the visual matrix with styling and hide the index cleanly
             st.dataframe(
                 radar_df.style.map(
                     lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
@@ -241,3 +243,5 @@ with tab_radar:
                 use_container_width=True,
                 hide_index=True
             )
+        else:
+            st.info("The market data servers are heavily congested. Wait a few moments and run the scan again.")
