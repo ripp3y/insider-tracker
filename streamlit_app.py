@@ -308,5 +308,116 @@ with tab_radar:
                 pass
         return processed_records
 
-    # Dynamic execution filter block logic
-    if len(selected_comparisons) >=
+    # FIXED: Appended trailing colon to fix the side-by-side conditional engine 
+    if len(selected_comparisons) >= 2:
+        with st.spinner("Isolating comparative data metrics..."):
+            comp_raw_data = fetch_raw_market_data(selected_comparisons)
+            comp_records = process_radar_metrics(comp_raw_data)
+            
+            if comp_records:
+                comp_df = pd.DataFrame(comp_records).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
+                st.info(f"⚡ Side-by-Side Comparison Matrix ({len(selected_comparisons)} Assets Isolated)")
+                
+                def style_comp_rows(val):
+                    if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.25); font-weight: bold;"
+                    elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.25);"
+                    elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.25);"
+                    elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.25); font-weight: bold;"
+                    return ""
+                    
+                st.dataframe(
+                    comp_df.style.map(style_comp_rows, subset=["Structure"]),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            st.markdown("---")
+
+    if st.button("🔄 Execute Full Watchlist Radar Scan"):
+        with st.spinner("Compiling multi-timeframe structural trends..."):
+            market_data = fetch_raw_market_data(st.session_state.watchlist)
+            screened_data = process_radar_metrics(market_data)
+
+        if screened_data:
+            radar_df = pd.DataFrame(screened_data).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
+            def style_structure_rows(val):
+                if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
+                elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.15);"
+                elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.15);"
+                elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
+                return ""
+            st.dataframe(radar_df.style.map(style_structure_rows, subset=["Structure"]), use_container_width=True, hide_index=True)
+        else:
+            st.info("The watchlist is empty or data servers are congested. Load tickers to ignite.")
+
+# ──────────────────────────────────────────────────────────
+# TAB 3: LIVE INSTITUTIONAL DISTRIBUTION ENGINE 
+# ──────────────────────────────────────────────────────────
+with tab_institutional:
+    st.subheader("Institutional Whales Tracking Matrix")
+    st.markdown("Isolates anomalous trading footprint trends. Identifies heavy institutional loading vs. aggressive retail distribution.")
+    
+    if st.button("🐳 Run Whales Volume Footprint Scan"):
+        with st.spinner("Decoding institutional block setups..."):
+            market_data = fetch_raw_market_data(st.session_state.watchlist)
+            whale_data = []
+            
+            for ticker, df in market_data.items():
+                try:
+                    close_col = 'Close' if 'Close' in df.columns else '4. close'
+                    vol_col = 'Volume' if 'Volume' in df.columns else '5. volume'
+                    open_col = 'Open' if 'Open' in df.columns else '1. open'
+                    
+                    close_series = df[close_col].astype(float)
+                    vol_series = df[vol_col].astype(float)
+                    open_series = df[open_col].astype(float)
+                    
+                    current_price = float(close_series.iloc[-1])
+                    prev_price = float(close_series.iloc[-2])
+                    current_open = float(open_series.iloc[-1])
+                    current_volume = float(vol_series.iloc[-1])
+                    
+                    available_bars = len(close_series)
+                    vol_lookback = min(20, available_bars)
+                    avg_volume_20d = float(vol_series.rolling(window=vol_lookback).mean().iloc[-1])
+                    
+                    vol_surge_pct = ((current_volume - avg_volume_20d) / avg_volume_20d) * 100 if avg_volume_20d > 0 else 0.0
+                    price_change_pct = ((current_price - prev_price) / prev_price) * 100
+                    intraday_direction = current_price - current_open
+                    
+                    if price_change_pct > 0 and intraday_direction > 0:
+                        flow_type = "🐋 Institutional Accumulation"
+                        sort_score = vol_surge_pct
+                    elif price_change_pct < 0 and intraday_direction < 0:
+                        flow_type = "🚨 Heavy Distribution"
+                        sort_score = vol_surge_pct * 2
+                    else:
+                        flow_type = "💨 Mixed / Light Retail"
+                        sort_score = -500.0 + vol_surge_pct
+
+                    rsi_lookback = min(14, available_bars - 1)
+                    if rsi_lookback >= 2:
+                        delta = close_series.diff()
+                        gain = (delta.where(delta > 0, 0)).rolling(window=rsi_lookback).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_lookback).mean()
+                        rs = gain / (loss + 1e-9)
+                        rsi = float(100 - (100 / (1 + rs)).iloc[-1])
+                    else:
+                        rsi = 50.0
+
+                    whale_data.append({
+                        "Ticker": ticker, "Price": f"${current_price:.2f}", "Net Change": f"{price_change_pct:+.2f}%",
+                        "Whale Flow Status": flow_type, "Vol Surge (20D MA)": f"{vol_surge_pct:+.1f}%",
+                        "RSI (14)": f"{rsi:.1f}", "raw_sort": sort_score
+                    })
+                except Exception:
+                    pass
+
+        if whale_data:
+            whale_df = pd.DataFrame(whale_data).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
+            def style_whale_rows(val):
+                if "🐋" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
+                elif "🚨" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
+                return ""
+            st.dataframe(whale_df.style.map(style_whale_rows, subset=["Whale Flow Status"]), use_container_width=True, hide_index=True)
+        else:
+            st.info("Load tickers in your active list and fire the footprint scanner.")
