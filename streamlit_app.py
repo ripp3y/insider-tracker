@@ -227,6 +227,10 @@ with tab_radar:
         if not radar_df.empty:
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
             
+                    if not radar_df.empty:
+            radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
+            
+            # Use st.dataframe with hide_index=True to strip out the scrambled row numbers
             st.dataframe(
                 radar_df.style.map(
                     lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
@@ -234,7 +238,6 @@ with tab_radar:
                     else ("background-color: rgba(220, 53, 69, 0.15);" if "⚠️" in str(val) else "")),
                     subset=["Structure"]
                 ),
-                use_container_width=True
+                use_container_width=True,
+                hide_index=True
             )
-        else:
-            st.info("The market data servers are heavily congested. Wait a few moments and run the scan again.")
