@@ -178,7 +178,7 @@ with tab_radar:
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
                 
-                # UPDATED: Calculate relative volume surge over a 20-day baseline
+                # Calculate relative volume surge over a 20-day baseline
                 current_volume = float(vol_series.iloc[-1])
                 avg_volume_20d = float(vol_series.rolling(window=20).mean().iloc[-1])
                 
@@ -208,7 +208,7 @@ with tab_radar:
                     "Price": f"${current_price:.2f}",
                     "Structure": status,
                     "RSI (14)": f"{rsi:.1f}",
-                    "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",  # Replaced raw column with formatted percentage deviation
+                    "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",
                     "SMA 50 Support": f"${sma_50:.2f}",
                     "Dist to SMA 50": f"{dist_to_50:+.1f}%",
                     "SMA 200 Floor": f"${sma_200:.2f}",
@@ -224,15 +224,9 @@ with tab_radar:
         with st.spinner("Compiling multi-timeframe structural trends..."):
             radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
 
-            if st.button("🔄 Execute Hardened Matrix Scan"):
-        with st.spinner("Compiling multi-timeframe structural trends..."):
-            radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
-
         if not radar_df.empty:
-            # 1. Properly sort and strip out the raw temporary sorting key
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
             
-            # 2. Build the visual matrix with styling and hide the index cleanly
             st.dataframe(
                 radar_df.style.map(
                     lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
