@@ -9,17 +9,20 @@ import yfinance as yf
 # ──────────────────────────────────────────────────────────
 st.set_page_config(page_title="Asymmetry Dashboard", layout="wide")
 
-MASTER_WATCHLIST = [
-    "FIX", "VRT", "CIEN", "SMCI", "BE", 
-    "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
-    "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
-]
+# Initialize persistent session state memory for our watch matrix
+if "watchlist" not in st.session_state:
+    # Seed with your core baseline assets
+    st.session_state.watchlist = [
+        "FIX", "VRT", "CIEN", "SMCI", "BE", 
+        "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
+        "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
+    ]
 
 # Load SEC API Key from Streamlit Secrets securely
 SEC_API_KEY = st.secrets.get("SEC_API_KEY", "")
 
 # ──────────────────────────────────────────────────────────
-# SIDEBAR CONTROLS
+# SIDEBAR CONTROLS & DYNAMIC WATCHLIST MANAGER
 # ──────────────────────────────────────────────────────────
 st.sidebar.title("🦅 Asymmetry Control Panel")
 
@@ -33,6 +36,35 @@ if not SEC_API_KEY:
     st.stop()
 
 lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3, max_value=30, value=14)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🛠️ Watchlist Asset Matrix")
+
+# 1. Bulk Add Tickers Interface
+bulk_input = st.sidebar.text_input("Add New Ticker(s) (Comma Separated):", placeholder="e.g., SOXX, XSD, AMD, URA")
+if st.sidebar.button("➕ Inject into Matrix"):
+    if bulk_input:
+        # Split tokens, strip whitespace, convert to uppercase, and filter out empties
+        new_tickers = [t.strip().upper() for t in bulk_input.split(",") if t.strip()]
+        added_count = 0
+        for ticker in new_tickers:
+            if ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(ticker)
+                added_count += 1
+        if added_count > 0:
+            st.sidebar.success(f"Injected {added_count} new asset tracks!")
+            st.rerun()
+
+# 2. Individual Removal Interface
+ticker_to_remove = st.sidebar.selectbox("Select Asset to Purge:", [""] + sorted(st.session_state.watchlist))
+if st.sidebar.button("❌ Remove Selected"):
+    if ticker_to_remove and ticker_to_remove in st.session_state.watchlist:
+        st.session_state.watchlist.remove(ticker_to_remove)
+        st.sidebar.warning(f"Purged {ticker_to_remove} from tracking matrix.")
+        st.rerun()
+
+# Display current count metrics so you know exactly when you hit your target
+st.sidebar.info(f"Total Active Trackers: **{len(st.session_state.watchlist)}**")
 
 # ──────────────────────────────────────────────────────────
 # TABS LAYOUT
@@ -135,7 +167,7 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (SHORT-TERM MOMENTUM FILTER)
+# TAB 2: STRUCTURAL UPTREND RADAR (DYNAMIC PIPELINE)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
@@ -144,7 +176,9 @@ with tab_radar:
     @st.cache_data(ttl=600)
     def calculate_trend_metrics_hardened(ticker_list):
         screened_data = []
-        
+        if not ticker_list:
+            return pd.DataFrame()
+            
         tickers_string = " ".join(ticker_list)
         try:
             batch_data = yf.download(tickers_string, period="1y", group_by="ticker", threads=False, progress=False)
@@ -154,8 +188,11 @@ with tab_radar:
         for ticker in ticker_list:
             df = pd.DataFrame()
             
-            if not batch_data.empty and ticker in batch_data.columns.levels[0]:
+            # Safe multi-column extraction checking
+            if not batch_data.empty and len(ticker_list) > 1 and ticker in batch_data.columns.levels[0]:
                 df = batch_data[ticker].dropna()
+            elif not batch_data.empty and len(ticker_list) == 1:
+                df = batch_data.dropna()
                 
             if df.empty or len(df) < 200:
                 try:
@@ -179,11 +216,9 @@ with tab_radar:
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
                 
-                # Calculate active 1-Month performance (approx. 21 trading sessions)
                 price_1m_ago = float(close_series.iloc[-21])
                 perf_1m = ((current_price - price_1m_ago) / price_1m_ago) * 100
                 
-                # Calculate relative volume surge over a 20-day baseline
                 current_volume = float(vol_series.iloc[-1])
                 avg_volume_20d = float(vol_series.rolling(window=20).mean().iloc[-1])
                 
@@ -191,18 +226,16 @@ with tab_radar:
                 if avg_volume_20d > 0:
                     volume_surge_pct = ((current_volume - avg_volume_20d) / avg_volume_20d) * 100
                 
-                # Compute Relative Strength Index (RSI 14)
                 delta = close_series.diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                 rs = gain / (loss + 1e-9)
                 rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 
-                # Dynamic Structure Gatekeeper Logic
                 if current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200:
                     status = "🔥 Strong Uptrend"
                 elif current_price <= sma_20 and current_price > sma_50:
-                    status = "💤 Stalling / Flat"  # Swapped emoji to make string parsing unique
+                    status = "💤 Stalling / Flat"
                 elif current_price <= sma_50 and current_price > sma_200:
                     status = "⏳ Support Test"
                 else:
@@ -231,21 +264,17 @@ with tab_radar:
 
     if st.button("🔄 Execute Hardened Matrix Scan"):
         with st.spinner("Compiling multi-timeframe structural trends..."):
-            radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
+            # LINKED: Pulls straight from the dynamic session state list instead of static arrays
+            radar_df = calculate_trend_metrics_hardened(st.session_state.watchlist)
 
         if not radar_df.empty:
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
             
-            # Sharpened Color Mapping Function
             def style_structure_rows(val):
-                if "🔥" in str(val):
-                    return "background-color: rgba(40, 167, 69, 0.15);"  # Soft Green
-                elif "💤" in str(val):
-                    return "background-color: rgba(255, 140, 0, 0.15);"  # Muted Dark Amber/Orange for Stalling
-                elif "⏳" in str(val):
-                    return "background-color: rgba(255, 193, 7, 0.15);"  # Bright Yellow for Active Support Tests
-                elif "⚠️" in str(val):
-                    return "background-color: rgba(220, 53, 69, 0.15);"  # Soft Red
+                if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
+                elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.15);"
+                elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.15);"
+                elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
                 return ""
 
             st.dataframe(
@@ -254,4 +283,4 @@ with tab_radar:
                 hide_index=True
             )
         else:
-            st.info("The market data servers are heavily congested. Wait a few moments and run the scan again.")
+            st.info("The watchlist is currently empty or data feeds are congested. Add tickers in the control panel.")
