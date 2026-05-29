@@ -2,3 +2,4 @@ streamlit
 pandas
 sec-api
 yfinance
+alpha_vantage
