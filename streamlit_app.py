@@ -3,19 +3,44 @@ import pandas as pd
 from datetime import datetime, timedelta
 from sec_api import QueryApi
 import yfinance as yf
+import json
+import os
 
 # ──────────────────────────────────────────────────────────
-# CONFIGURATION & GLOBAL SETUP
+# CONFIGURATION & GLOBAL SETUP (PERSISTENT CORES)
 # ──────────────────────────────────────────────────────────
 st.set_page_config(page_title="Asymmetry Dashboard", layout="wide")
 
-# Initialize persistent session state memory for our watch matrix
+WATCHLIST_FILE = "watchlist.json"
+BASE_SEED_TRACKS = [
+    "FIX", "VRT", "CIEN", "SMCI", "BE", 
+    "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
+    "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
+]
+
+def load_permanent_watchlist():
+    """Reads saved tickers from the local JSON storage file."""
+    if os.path.exists(WATCHLIST_FILE):
+        try:
+            with open(WATCHLIST_FILE, "r") as f:
+                saved_list = json.load(f)
+                if isinstance(saved_list, list) and len(saved_list) > 0:
+                    return saved_list
+        except Exception:
+            pass
+    return BASE_SEED_TRACKS.copy()
+
+def save_permanent_watchlist(updated_list):
+    """Commits active tracking state directly to disk memory."""
+    try:
+        with open(WATCHLIST_FILE, "w") as f:
+            json.dump(updated_list, f, indent=4)
+    except Exception as e:
+        st.sidebar.error(f"Memory Write Failure: {e}")
+
+# Initialize session state from the permanent file matrix
 if "watchlist" not in st.session_state:
-    st.session_state.watchlist = [
-        "FIX", "VRT", "CIEN", "SMCI", "BE", 
-        "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
-        "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
-    ]
+    st.session_state.watchlist = load_permanent_watchlist()
 
 # Load SEC API Key from Streamlit Secrets securely
 SEC_API_KEY = st.secrets.get("SEC_API_KEY", "")
@@ -50,6 +75,8 @@ if st.sidebar.button("➕ Inject into Matrix"):
                 st.session_state.watchlist.append(ticker)
                 added_count += 1
         if added_count > 0:
+            # Commit straight to the permanent JSON database file immediately
+            save_permanent_watchlist(st.session_state.watchlist)
             st.sidebar.success(f"Injected {added_count} new asset tracks!")
             st.rerun()
 
@@ -58,6 +85,8 @@ ticker_to_remove = st.sidebar.selectbox("Select Asset to Purge:", [""] + sorted(
 if st.sidebar.button("❌ Remove Selected"):
     if ticker_to_remove and ticker_to_remove in st.session_state.watchlist:
         st.session_state.watchlist.remove(ticker_to_remove)
+        # Sync changes to the file database
+        save_permanent_watchlist(st.session_state.watchlist)
         st.sidebar.warning(f"Purged {ticker_to_remove} from tracking matrix.")
         st.rerun()
 
@@ -164,7 +193,7 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR (SELF-HEALING TIMEFRAMES)
+# TAB 2: STRUCTURAL UPTREND RADAR (PERSISTENT DATA TRACKS)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
@@ -210,7 +239,6 @@ with tab_radar:
                 current_price = float(close_series.iloc[-1])
                 available_bars = len(close_series)
                 
-                # Check for relative volume surge over a baseline
                 current_volume = float(vol_series.iloc[-1])
                 vol_lookback = min(20, available_bars)
                 avg_volume_baseline = float(vol_series.rolling(window=vol_lookback).mean().iloc[-1])
@@ -219,7 +247,6 @@ with tab_radar:
                 if avg_volume_baseline > 0:
                     volume_surge_pct = ((current_volume - avg_volume_baseline) / avg_volume_baseline) * 100
                 
-                # Compute Relative Strength Index (RSI 14)
                 rsi_lookback = min(14, available_bars - 1)
                 if rsi_lookback >= 2:
                     delta = close_series.diff()
@@ -230,17 +257,14 @@ with tab_radar:
                 else:
                     rsi = 50.0
 
-                # 1-Month Return calc (falls back to max available bars for young stocks)
                 perf_lookback = min(21, available_bars)
                 price_past = float(close_series.iloc[-perf_lookback])
                 perf_1m = ((current_price - price_past) / price_past) * 100
 
-                # DYNAMIC CRITERIA BRANCHING FOR YOUNG ASSETS (e.g., DRAM)
                 if available_bars < 50:
                     sma_short = float(close_series.rolling(window=min(10, available_bars)).mean().iloc[-1])
                     sma_long = float(close_series.rolling(window=min(20, available_bars)).mean().iloc[-1])
                     
-                    status_text = "✨ New Asset Track"
                     if current_price > sma_short and sma_short > sma_long:
                         status = "🔥 Strong Uptrend"
                     elif current_price <= sma_short and current_price > sma_long:
@@ -253,7 +277,6 @@ with tab_radar:
                     display_200 = "N/A (New)"
                     dist_to_200_str = "0.0%"
                 else:
-                    # Standard execution loop for seasoned stocks
                     sma_20 = float(close_series.rolling(window=20).mean().iloc[-1])
                     sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                     sma_200 = float(close_series.rolling(window=200).mean().iloc[-1]) if available_bars >= 200 else sma_50
