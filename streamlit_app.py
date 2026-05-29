@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 from datetime import datetime, timedelta
 from sec_api import QueryApi
 from alpha_vantage.timeseries import TimeSeries
@@ -31,7 +30,7 @@ if not SEC_API_KEY:
 else:
     st.sidebar.success("🔑 SEC Connection Authenticated.")
 
-# Alpha Vantage Key Validation (For Rate-Limit Immunity)
+# Alpha Vantage Key Validation
 if not AV_API_KEY:
     AV_API_KEY = st.sidebar.text_input(
         "Enter Alpha Vantage Key:", 
@@ -48,7 +47,7 @@ if not SEC_API_KEY or not AV_API_KEY:
 lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3, max_value=30, value=14)
 
 # ──────────────────────────────────────────────────────────
-# REBEL TABS LAYOUT
+# TABS LAYOUT
 # ──────────────────────────────────────────────────────────
 tab_insider, tab_radar = st.tabs(["🕵️‍♂️ Live C-Suite Insiders", "📈 Structural Uptrend Radar"])
 
@@ -56,7 +55,7 @@ tab_insider, tab_radar = st.tabs(["🕵️‍♂️ Live C-Suite Insiders", "�
 query_api = QueryApi(api_key=SEC_API_KEY)
 
 # ──────────────────────────────────────────────────────────
-# TAB 1: INSIDER TRADING LOGIC (FIXED NESTED JSON PARSING)
+# TAB 1: INSIDER TRADING LOGIC
 # ──────────────────────────────────────────────────────────
 with tab_insider:
     st.subheader("Real-Time Corporate Insider Outlays")
@@ -66,7 +65,6 @@ with tab_insider:
     def fetch_high_conviction_insiders(days_to_search):
         start_date = (datetime.now() - timedelta(days=days_to_search)).strftime('%Y-%m-%d')
         
-        # Exact Lucene search string matching standard Query API fields
         lucene_query = (
             f"formType:\"4\" AND "
             f"filedAt:[{start_date} TO *] AND "
@@ -87,25 +85,26 @@ with tab_insider:
             parsed_trades = []
             
             for filing in filings:
-                # FIXED: Pull data from the properly nested SEC JSON paths
+                # Safe checking for nested paths
                 issuer = filing.get("issuer", {})
+                if not issuer:
+                    continue
+                    
                 ticker = issuer.get("tradingSymbol", "N/A")
                 company_name = issuer.get("name", "N/A")
                 
-                # Check relationship and owner detail paths
                 reporting_owner = filing.get("reportingOwner", {})
-                insider_name = reporting_owner.get("name", "N/A")
-                
-                is_director = reporting_owner.get("isDirector", False)
-                is_officer = reporting_owner.get("isOfficer", False)
-                officer_title = reporting_owner.get("officerTitle", "")
+                insider_name = reporting_owner.get("name", "N/A") if reporting_owner else "N/A"
                 
                 role = "Other"
-                if "CEO" in str(officer_title).upper(): role = "CEO"
-                elif is_officer: role = f"Officer ({officer_title})" if officer_title else "Officer"
-                elif is_director: role = "Director"
+                if reporting_owner:
+                    is_director = reporting_owner.get("isDirector", False)
+                    is_officer = reporting_owner.get("isOfficer", False)
+                    officer_title = reporting_owner.get("officerTitle", "")
+                    if "CEO" in str(officer_title).upper(): role = "CEO"
+                    elif is_officer: role = f"Officer ({officer_title})" if officer_title else "Officer"
+                    elif is_director: role = "Director"
 
-                # Parse transactions block safely
                 for tx in filing.get("nonDerivativeTransactions", []):
                     if tx.get("transactionCode") == "P" and str(tx.get("isRule10b51")).lower() != "true":
                         shares = float(tx.get("transactionShares", 0) or 0)
@@ -152,7 +151,7 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR
+# TAB 2: STRUCTURAL UPTREND RADAR (FIXED ALPHAVANTAGE COLUMNS)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
@@ -165,14 +164,15 @@ with tab_radar:
         
         for ticker in ticker_list:
             try:
+                # Alpha Vantage returns an ascending sorted index with '1. open', '4. close' layout
                 df, meta = ts.get_daily(symbol=ticker, outputsize='full')
-                df.columns = [col.split('. ')[1].title() for col in df.columns]
                 df = df.sort_index(ascending=True)
 
                 if df.empty or len(df) < 200: 
                     continue
 
-                close_series = df['Close']
+                # FIXED: Accessing columns exactly matching Alpha Vantage string syntax
+                close_series = df['4. close'].astype(float)
                 current_price = float(close_series.iloc[-1])
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
@@ -204,7 +204,7 @@ with tab_radar:
                     "Dist to SMA 200": f"{dist_to_200:+.1f}%",
                     "raw_sort": dist_to_50
                 })
-            except:
+            except Exception as e:
                 pass
         return pd.DataFrame(screened_data)
 
