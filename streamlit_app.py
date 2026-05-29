@@ -198,11 +198,11 @@ with tab_radar:
                 rs = gain / (loss + 1e-9)
                 rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 
-                # ADJUSTED STRUCTURE LOGIC: Requires active price clearance over the 20D SMA
+                # Dynamic Structure Gatekeeper Logic
                 if current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200:
                     status = "🔥 Strong Uptrend"
                 elif current_price <= sma_20 and current_price > sma_50:
-                    status = "⏳ Stalling / Flat"
+                    status = "💤 Stalling / Flat"  # Swapped emoji to make string parsing unique
                 elif current_price <= sma_50 and current_price > sma_200:
                     status = "⏳ Support Test"
                 else:
@@ -216,13 +216,13 @@ with tab_radar:
                     "Price": f"${current_price:.2f}",
                     "Structure": status,
                     "RSI (14)": f"{rsi:.1f}",
-                    "1-Mo Return": f"{perf_1m:+.1f}%",       # NEW COLUMN: Spotlights current active performance
+                    "1-Mo Return": f"{perf_1m:+.1f}%",
                     "Vol Surge (20D MA)": f"{volume_surge_pct:+.1f}%",
                     "SMA 50 Support": f"${sma_50:.2f}",
                     "Dist to SMA 50": f"{dist_to_50:+.1f}%",
                     "SMA 200 Floor": f"${sma_200:.2f}",
                     "Dist to SMA 200": f"{dist_to_200:+.1f}%",
-                    "raw_sort": perf_1m                       # SORT RULE: Ranks table by highest 1-month performer
+                    "raw_sort": perf_1m
                 })
             except Exception:
                 pass
@@ -234,16 +234,22 @@ with tab_radar:
             radar_df = calculate_trend_metrics_hardened(MASTER_WATCHLIST)
 
         if not radar_df.empty:
-            # Sorted by the raw monthly return value so leaders sit on top
             radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
             
+            # Sharpened Color Mapping Function
+            def style_structure_rows(val):
+                if "🔥" in str(val):
+                    return "background-color: rgba(40, 167, 69, 0.15);"  # Soft Green
+                elif "💤" in str(val):
+                    return "background-color: rgba(255, 140, 0, 0.15);"  # Muted Dark Amber/Orange for Stalling
+                elif "⏳" in str(val):
+                    return "background-color: rgba(255, 193, 7, 0.15);"  # Bright Yellow for Active Support Tests
+                elif "⚠️" in str(val):
+                    return "background-color: rgba(220, 53, 69, 0.15);"  # Soft Red
+                return ""
+
             st.dataframe(
-                radar_df.style.map(
-                    lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
-                    else ("background-color: rgba(255, 193, 7, 0.15);" if "⏳" in str(val)
-                    else ("background-color: rgba(220, 53, 69, 0.15);" if "⚠️" in str(val) else "")),
-                    subset=["Structure"]
-                ),
+                radar_df.style.map(style_structure_rows, subset=["Structure"]),
                 use_container_width=True,
                 hide_index=True
             )
