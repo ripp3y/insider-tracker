@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
-from sec_api import InsiderTradingApi
+from sec_api import QueryApi
 from alpha_vantage.timeseries import TimeSeries
 
 # ──────────────────────────────────────────────────────────
@@ -52,10 +52,11 @@ lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3,
 # ──────────────────────────────────────────────────────────
 tab_insider, tab_radar = st.tabs(["🕵️‍♂️ Live C-Suite Insiders", "📈 Structural Uptrend Radar"])
 
-insider_api = InsiderTradingApi(api_key=SEC_API_KEY)
+# Instantiating standard QueryApi to parse raw EDGAR Form 4 fields
+query_api = QueryApi(api_key=SEC_API_KEY)
 
 # ──────────────────────────────────────────────────────────
-# TAB 1: INSIDER TRADING LOGIC
+# TAB 1: INSIDER TRADING LOGIC (STANDARD QUERY API ALIGNMENT)
 # ──────────────────────────────────────────────────────────
 with tab_insider:
     st.subheader("Real-Time Corporate Insider Outlays")
@@ -64,38 +65,51 @@ with tab_insider:
     @st.cache_data(ttl=300)
     def fetch_high_conviction_insiders(days_to_search):
         start_date = (datetime.now() - timedelta(days=days_to_search)).strftime('%Y-%m-%d')
+        
+        # Build standard Lucene JSON payload matched to standard QueryApi specs
         lucene_query = (
-            f"documentType:\"4\" AND "
-            f"nonDerivativeTransactions.transactionCode:\"P\" AND "
-            f"nonDerivativeTransactions.isRule10b51:\"false\" AND "
-            f"filingDate:[{start_date} TO *]"
+            f"formType:\"4\" AND "
+            f"periodOfReport:[{start_date} TO *] AND "
+            f"transactions.transactionCode:\"P\" AND "
+            f"transactions.isRule10b51:\"false\""
         )
+        
+        payload = {
+            "query": { "query_string": { "query": lucene_query } },
+            "from": "0",
+            "size": "50",
+            "sort": [{ "filedAt": { "order": "desc" } }]
+        }
+        
         try:
-            # CORRECTED: Using the universal '.get_data' API request wrapper method
-            response = insider_api.get_data(lucene_query)
-            transactions = response.get("transactions", []) if isinstance(response, dict) else []
+            response = query_api.get_filings(payload)
+            filings = response.get("filings", [])
             parsed_trades = []
             
-            for trade in transactions:
-                ticker = trade.get("issuer", {}).get("tradingSymbol", "N/A")
-                company_name = trade.get("issuer", {}).get("name", "N/A")
-                insider_name = trade.get("reportingOwner", {}).get("name", "N/A")
+            for filing in filings:
+                # Handle standard query structure properties mapping securely
+                ticker = filing.get("ticker", "N/A")
+                company_name = filing.get("companyName", "N/A")
                 
-                is_director = trade.get("reportingOwner", {}).get("isDirector", False)
-                is_officer = trade.get("reportingOwner", {}).get("isOfficer", False)
-                officer_title = trade.get("reportingOwner", {}).get("officerTitle", "")
-                
-                role = "Other"
-                if "CEO" in str(officer_title).upper(): role = "CEO"
-                elif is_officer: role = f"Officer ({officer_title})" if officer_title else "Officer"
-                elif is_director: role = "Director"
+                # Dig into the transaction arrays returned by the standard endpoints
+                for rpt_owner in filing.get("reportingOwners", []):
+                    insider_name = rpt_owner.get("name", "N/A")
+                    relationship = rpt_owner.get("relationship", {})
+                    
+                    role = "Other"
+                    if relationship.get("isOfficer") or relationship.get("isCeo"):
+                        role = f"Officer ({relationship.get('officerTitle', 'Exec')})"
+                    elif relationship.get("isDirector"):
+                        role = "Director"
+                    elif relationship.get("isTenPercentOwner"):
+                        role = "10% Owner"
 
-                for item in trade.get("nonDerivativeTransactions", []):
-                    if item.get("transactionCode") == "P" and item.get("isRule10b51") == "false":
-                        shares = float(item.get("transactionShares", 0) or 0)
-                        price = float(item.get("transactionPricePerShare", 0) or 0)
+                for tx in filing.get("transactions", []):
+                    if tx.get("transactionCode") == "P" and str(tx.get("isRule10b51")).lower() != "true":
+                        shares = float(tx.get("transactionShares", 0) or 0)
+                        price = float(tx.get("transactionPricePerShare", 0) or 0)
                         total_value = shares * price
-                        shares_owned_after = float(item.get("sharesOwnedFollowingTransaction", 0) or 0)
+                        shares_owned_after = float(tx.get("sharesOwnedFollowingTransaction", 0) or 0)
                         
                         position_increase_pct = 0
                         if (shares_owned_after - shares) > 0:
@@ -103,7 +117,7 @@ with tab_insider:
 
                         if total_value >= 10000:
                             parsed_trades.append({
-                                "Filing Date": trade.get("filingDate"),
+                                "Filing Date": filing.get("filedAt")[:10] if filing.get("filedAt") else "N/A",
                                 "Ticker": ticker,
                                 "Company Name": company_name,
                                 "Insider Trader": insider_name,
@@ -116,7 +130,7 @@ with tab_insider:
             df = pd.DataFrame(parsed_trades)
             return df.sort_values(by="Total Outlay", ascending=False).reset_index(drop=True) if not df.empty else pd.DataFrame()
         except Exception as e:
-            st.error(f"SEC API Error: {e}")
+            st.error(f"SEC Query Engine Error: {e}")
             return pd.DataFrame()
 
     with st.spinner("Extracting SEC filings..."):
