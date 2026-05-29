@@ -3,36 +3,48 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from sec_api import InsiderTradingApi
+from alpha_vantage.timeseries import TimeSeries
 
 # ──────────────────────────────────────────────────────────
 # CONFIGURATION & GLOBAL SETUP
 # ──────────────────────────────────────────────────────────
 st.set_page_config(page_title="Asymmetry Dashboard", layout="wide")
 
-# Define the unified portfolio matrix
 MASTER_WATCHLIST = [
     "FIX", "VRT", "CIEN", "SMCI", "BE", 
     "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
     "SNDK", "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
 ]
 
-# Load API Key from Streamlit Secrets securely
+# Load API Keys from Streamlit Secrets securely
 SEC_API_KEY = st.secrets.get("SEC_API_KEY", "")
+AV_API_KEY = st.secrets.get("AV_API_KEY", "")
 
 # ──────────────────────────────────────────────────────────
 # SIDEBAR CONTROLS
 # ──────────────────────────────────────────────────────────
 st.sidebar.title("🦅 Asymmetry Control Panel")
 
+# SEC Key Validation
 if not SEC_API_KEY:
     SEC_API_KEY = st.sidebar.text_input("Enter SEC-API.io Key:", type="password")
-    if not SEC_API_KEY:
-        st.warning("⚠️ Enter your SEC_API_KEY to unlock the live feeds.")
-        st.stop()
 else:
     st.sidebar.success("🔑 SEC Connection Authenticated.")
 
-# Global UI tweaks inside the sidebar
+# Alpha Vantage Key Validation (For Rate-Limit Immunity)
+if not AV_API_KEY:
+    AV_API_KEY = st.sidebar.text_input(
+        "Enter Alpha Vantage Key:", 
+        type="password", 
+        help="Get a free key at alphavantage.co to bypass Yahoo rate limits."
+    )
+else:
+    st.sidebar.success("🔑 Market Data Pipeline Secure.")
+
+if not SEC_API_KEY or not AV_API_KEY:
+    st.warning("⚠️ Please provide both API keys in the sidebar or Cloud Secrets to run the terminal components.")
+    st.stop()
+
 lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3, max_value=30, value=14)
 
 # ──────────────────────────────────────────────────────────
@@ -40,7 +52,6 @@ lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3,
 # ──────────────────────────────────────────────────────────
 tab_insider, tab_radar = st.tabs(["🕵️‍♂️ Live C-Suite Insiders", "📈 Structural Uptrend Radar"])
 
-# Initialize SEC API Engine safely
 insider_api = InsiderTradingApi(api_key=SEC_API_KEY)
 
 # ──────────────────────────────────────────────────────────
@@ -50,7 +61,6 @@ with tab_insider:
     st.subheader("Real-Time Corporate Insider Outlays")
     st.markdown("Scraping direct SEC EDGAR Form 4 streams. Automated robotic 10b51 plans are completely omitted.")
     
-    # Cache insider data for 5 minutes so it doesn't burn your SEC API credits on every click
     @st.cache_data(ttl=300)
     def fetch_high_conviction_insiders(days_to_search):
         start_date = (datetime.now() - timedelta(days=days_to_search)).strftime('%Y-%m-%d')
@@ -124,36 +134,35 @@ with tab_insider:
         st.info("No manual cash purchases detected over $10k in this timeframe.")
 
 # ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR
+# TAB 2: STRUCTURAL UPTREND RADAR (ALPHA VANTAGE IMMUNITY ENGINE)
 # ──────────────────────────────────────────────────────────
 with tab_radar:
     st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Scans moving average configurations to filter out crumbling assets and highlight strong momentum.")
+    st.markdown("Scans key moving averages via Alpha Vantage pipeline to keep data moving smoothly without rate limits.")
     
-    # CRITICAL RATELIMIT FIX: Cache market data for 10 minutes (600 seconds) 
-    # to stop shared cloud server IP blocking
-    @st.cache_data(ttl=600)
-    def calculate_trend_metrics(ticker_list):
+    @st.cache_data(ttl=1800)  # Long cache (30 mins) to protect standard API tier usage
+    def calculate_trend_metrics_av(ticker_list, api_key):
         screened_data = []
-        start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+        ts = TimeSeries(key=api_key, output_format='pandas')
         
         for ticker in ticker_list:
             try:
-                # Use a specific ticker object setup for cleaner processing
-                tick_obj = yf.Ticker(ticker)
-                df = tick_obj.history(start=start_date, end=datetime.now().strftime('%Y-%m-%d'), progress=False)
+                # Pull full daily data series 
+                df, meta = ts.get_daily(symbol=ticker, outputsize='full')
                 
+                # Standardize Alpha Vantage messy column naming conventions
+                df.columns = [col.split('. ')[1].title() for col in df.columns]
+                df = df.sort_index(ascending=True) # Ensure chronological order
+
                 if df.empty or len(df) < 200: 
                     continue
-                    
-                if isinstance(df.columns, pd.MultiIndex): 
-                    df.columns = df.columns.get_level_values(0)
 
                 close_series = df['Close']
                 current_price = float(close_series.iloc[-1])
                 sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
                 sma_200 = float(close_series.rolling(window=200).mean().iloc[-1])
                 
+                # Compute RSI (14)
                 delta = close_series.diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -185,13 +194,12 @@ with tab_radar:
                 pass
         return pd.DataFrame(screened_data)
 
-    with st.spinner("Analyzing multi-timeframe trends safely..."):
-        radar_df = calculate_trend_metrics(MASTER_WATCHLIST)
+    with st.spinner("Analyzing multi-timeframe trends via Alpha Vantage..."):
+        radar_df = calculate_trend_metrics_av(MASTER_WATCHLIST, AV_API_KEY)
 
     if not radar_df.empty:
         radar_df = radar_df.sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
         
-        # Cleaned up table call to match newest streamlit version updates seen in logs
         st.dataframe(
             radar_df.style.map(
                 lambda val: "background-color: rgba(40, 167, 69, 0.15);" if "🔥" in str(val)
@@ -202,4 +210,4 @@ with tab_radar:
             use_container_width=True
         )
     else:
-        st.warning("No data returned. The shared server is currently rate-limited by Yahoo. It will automatically load your matrix once the window clears.")
+        st.info("Waiting for pipeline stream data to populate. Ensure Alpha Vantage API key is valid.")
