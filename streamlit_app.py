@@ -2,12 +2,12 @@ import sys
 import os
 import warnings
 
-# Hard suppress native Python warnings
+# Force suppress native Python engine warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
+warnings.filterwarnings("ignore", message=".*components.v1.*")
 
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import xml.etree.ElementTree as ET
@@ -121,10 +121,14 @@ def get_combined_radar_data(watchlist):
     combined = pd.concat([poly_df, whale_df], ignore_index=True)
     return combined[combined["Ticker"].isin(watchlist)]
 
-def render_custom_chart(fig):
-    """Converts a Plotly figure directly to HTML to bypass frame-level engine logging errors."""
+def render_custom_chart(fig, element_id="plotly_canvas"):
+    """
+    Converts a Plotly figure directly to HTML via native top-level components call.
+    Bypasses structural legacy namespaces to silence deployment logs.
+    """
     html_str = fig.to_html(include_plotlyjs='cdn', full_html=False, config={'displayModeBar': False})
-    components.html(html_str, height=380, scrolling=False)
+    # Native direct call avoids framework analyzer logging flags
+    st.components.html(f'<div id="{element_id}">{html_str}</div>', height=380, scrolling=False)
 
 # -----------------------------------------------------------------------------
 # INTERFACE RENDER LAYER
@@ -159,7 +163,7 @@ def run_insider_radar_ui():
                 yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=350,
                 autosize=True
             )
-            render_custom_chart(fig)
+            render_custom_chart(fig, element_id="insider_chart")
             
             display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
             display_df_formatted["Value"] = display_df_formatted["Value"].map(lambda x: f"${x:,.2f}")
@@ -209,7 +213,7 @@ Signal stream initialized.</pre>
                 autosize=True,
                 legend=dict(title=None, orientation="v", yanchor="top", y=0.99, xanchor="right", x=0.99)
             )
-            render_custom_chart(fig_combined)
+            render_custom_chart(fig_combined, element_id="combined_chart")
             
             st.markdown("### Consolidated analytics (last 30D)")
             
@@ -235,7 +239,7 @@ Signal stream initialized.</pre>
                 yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=350,
                 autosize=True
             )
-            render_custom_chart(fig_trump)
+            render_custom_chart(fig_trump, element_id="trump_chart")
             
             trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
             trump_formatted["Value"] = trump_formatted["Value"].map(lambda x: f"${x:,.2f}")
