@@ -7,10 +7,9 @@ from sec_api import QueryApi
 # -----------------------------------------------------------------------------
 # API CONFIGURATION
 # -----------------------------------------------------------------------------
-# OPTION A: Paste your key directly here between the quotes to bypass Streamlit Secrets
+# If your secrets portal is acting up, you can paste your key directly here:
 DIRECT_API_KEY = "" 
 
-# OPTION B: Fall back to Streamlit Secrets if Option A is blank
 SEC_API_KEY = DIRECT_API_KEY if DIRECT_API_KEY else st.secrets.get("SEC_API_KEY", "")
 
 # -----------------------------------------------------------------------------
@@ -21,13 +20,11 @@ def fetch_real_insider_values():
     """
     Queries sec-api using a highly responsive QueryApi structure.
     """
-    # Force mock data if no key is supplied anywhere
     if not SEC_API_KEY or SEC_API_KEY == "YOUR_SEC_API_KEY_HERE":
         st.sidebar.warning("Using Mock Data: No API Key detected.")
         return get_mock_fallback_data()
 
     try:
-        # Initialize the wrapper client directly with verified key
         query_api = QueryApi(api_key=SEC_API_KEY)
         
         # Look back 5 days to ensure speed and focus on recent market volume
@@ -46,7 +43,6 @@ def fetch_real_insider_values():
         response = query_api.get_filings(search_parameters)
         filings = response.get("filings", [])
         
-        # If the API key is active but the result array is blank, fallback to mock
         if not filings:
             st.sidebar.info("API connected but returned 0 results. Showing mock data.")
             return get_mock_fallback_data()
@@ -99,23 +95,20 @@ def get_mock_fallback_data():
 def run_insider_radar_ui():
     st.markdown("## 🥷 Live C-Suite Insiders")
     st.markdown("### Real-Time Corporate Insider Outlays")
-    st.caption("Scraping direct SEC EDGAR Form 4 streams via Native Query API. Automated robotic 10b51 plans are completely omitted.")
+    st.caption("Scraping direct SEC EDGAR Form 4 streams via Native Query API. Automated programmatic 10b51 plans are completely omitted.")
 
-    # Ingest data stream
     raw_stream = fetch_real_insider_values()
     
     if raw_stream is None or raw_stream.empty:
         st.info("No current filings parsed from the SEC data stream window.")
         return
 
-    # Isolate explicit high-conviction manual deployments
     clean_buys = raw_stream[
         (raw_stream["Type"] == "Manual Buy") & 
         (raw_stream["Value"] >= 10000)
     ]
     
     if not clean_buys.empty:
-        # Group entries by ticker to consolidate multiple transaction blocks
         chart_data = clean_buys.groupby("Ticker").agg({
             "Value": "sum",
             "Insider": lambda x: ", ".join(x.unique())
@@ -123,7 +116,6 @@ def run_insider_radar_ui():
         
         chart_data = chart_data.sort_values(by="Value", ascending=False)
         
-        # Build Tactical Dark Plotly Bar chart using consolidated data
         fig = px.bar(
             chart_data,
             x="Ticker",
@@ -152,7 +144,6 @@ def run_insider_radar_ui():
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Clean mobile presentation tracking grid
         st.dataframe(
             clean_buys[["Date", "Ticker", "Insider", "Value"]].style.format({"Value": "${:,.2f}"}),
             use_container_width=True,
@@ -168,4 +159,3 @@ def run_insider_radar_ui():
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
     run_insider_radar_ui()
-l
