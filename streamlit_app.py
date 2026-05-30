@@ -2,7 +2,7 @@ import sys
 import os
 import warnings
 
-# Suppress native python engine framework logs completely
+# Force-suppress framework logging noise
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 os.environ["STREAMLIT_DEPRECATION_WARNINGS"] = "false"
@@ -131,9 +131,10 @@ def get_combined_radar_data(watchlist):
         return pd.DataFrame(columns=["Date", "Ticker", "Source", "Buyer", "Value", "Details"])
 
 def render_custom_chart(fig):
-    """Renders the Plotly canvas safely using authorized theme rules."""
-    # FIXED: Swapped 'markdown' to 'streamlit' to resolve the internal engine validation fault
-    st.plotly_chart(fig, theme="streamlit", config={'displayModeBar': False})
+    """Renders the Plotly canvas safely using normalized layout rules."""
+    # FIXED: Completely removed theme="markdown" to protect layout instantiation pipeline.
+    # Native default layout inherits Dark Mode elegantly while supporting dynamic resizing layout.
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # -----------------------------------------------------------------------------
 # INTERFACE RENDER LAYER
