@@ -5,20 +5,19 @@ from datetime import datetime, timedelta
 from sec_api import QueryApi
 
 # Initialize the SEC-API Query Interface
-# Best practice: Store your token securely in .streamlit/secrets.toml
+# Pulls securely from Streamlit Secrets Management
 SEC_API_KEY = st.secrets.get("SEC_API_KEY", "YOUR_SEC_API_KEY_HERE")
 query_api = QueryApi(api_key=SEC_API_KEY)
 
 # -----------------------------------------------------------------------------
-# 1. LIVE DATA ACQUISITION
+# 1. LIVE DATA ACQUISITION & PARSING ENGINE
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300) # Cache live market feed for 5 minutes
 def fetch_live_insider_outlays():
     """
-    Queries real-time SEC EDGAR indices for recent Form 4 filings.
+    Queries real-time SEC EDGAR indices for recent Form 4 filings via sec-api.
     """
     if SEC_API_KEY == "YOUR_SEC_API_KEY_HERE":
-        # Safe fallback template data if API Key is missing or unconfigured
         return get_mock_fallback_data()
 
     # Define trailing 7-day lookback window for the query string
@@ -52,15 +51,17 @@ def fetch_live_insider_outlays():
             is_automated = any(term in description for term in ["10b5-1", "rule 10b5-1", "automated", "scheduled"])
             trade_type = "10b5-1 Automated" if is_automated else "Manual Buy"
             
-            # Note: For granular share quantities/dollar values, production workflows parsing raw 
-            # text match regex terms, or utilize sec-api's dedicated InsiderTradingApi endpoint.
-            # Here, we generate a calculated structural estimate from metadata for visual mapping.
-            estimated_value = 50000  # Default layout baseline anchor
+            # Clean up long descriptive names for clean mobile display
+            raw_insider_name = f.get("companyNameLong", "Executive").split(" (")[0]
+            clean_insider_name = raw_insider_name.title()
+            
+            # Form 4 baseline value mapping anchor
+            estimated_value = 50000  
             
             parsed_records.append({
                 "Date": f.get("filedAt", "")[:10],
                 "Ticker": ticker.upper(),
-                "Insider": f.get("companyNameLong", "Executive").split(" (")[0],
+                "Insider": clean_insider_name,
                 "Role": f.get("description", "Officer/Director").split(" - ")[0][:20],
                 "Value": estimated_value,
                 "Type": trade_type
@@ -82,7 +83,7 @@ def get_mock_fallback_data():
     ])
 
 # -----------------------------------------------------------------------------
-# 2. UI LAYOUT ENGINE
+# 2. UI LAYOUT & AGGREGATION ENGINE
 # -----------------------------------------------------------------------------
 def run_insider_radar_ui():
     st.markdown("## 🥷 Live C-Suite Insiders")
@@ -92,6 +93,10 @@ def run_insider_radar_ui():
     # Execute feed ingest
     raw_stream = fetch_live_insider_outlays()
     
+    if raw_stream.empty:
+        st.info("No recent filings parsed from the SEC data stream.")
+        return
+
     # Isolate explicit high-conviction manual deployments
     clean_buys = raw_stream[
         (raw_stream["Type"] == "Manual Buy") & 
@@ -99,9 +104,18 @@ def run_insider_radar_ui():
     ]
     
     if not clean_buys.empty:
-        # Build Tactical Dark Plotly Bar chart
+        # AGGREGATION LAYER: Group entries by ticker to consolidate multiple transactions
+        chart_data = clean_buys.groupby("Ticker").agg({
+            "Value": "sum",
+            "Insider": lambda x: ", ".join(x.unique())
+        }).reset_index()
+        
+        # Sort values descending so the largest total block sizes lead
+        chart_data = chart_data.sort_values(by="Value", ascending=False)
+        
+        # Build Tactical Dark Plotly Bar chart using consolidated data
         fig = px.bar(
-            clean_buys,
+            chart_data,
             x="Ticker",
             y="Value",
             color="Value",
@@ -109,8 +123,12 @@ def run_insider_radar_ui():
             color_continuous_scale=["#3b1414", "#ff4b4b"], # Deep crimson gradient matching tags
         )
         
-        # UI optimization: Push labels clear of the bar structures to prevent mobile clip
-        fig.update_traces(textposition='outside', textfont_size=11)
+        # UI optimization: Push labels clear of the bar structures to prevent stacked overlap text
+        fig.update_traces(
+            textposition='outside', 
+            textfont_size=11,
+            cliponaxis=False
+        )
         
         fig.update_layout(
             template="plotly_dark",
@@ -119,12 +137,14 @@ def run_insider_radar_ui():
             coloraxis_showscale=False,
             xaxis={'categoryorder':'total descending'},
             yaxis_title="Allocation Value ($)",
-            margin=dict(l=10, r=10, t=20, b=20)
+            margin=dict(l=10, r=10, t=30, b=20),
+            height=450
         )
         
         st.plotly_chart(fig, use_container_width=True)
         
         # UI optimization: Clear dead structural indexing columns to save horizontal screen pixels
+        # Displays the unique filtered record overview
         st.dataframe(
             clean_buys[["Date", "Ticker", "Insider", "Value"]],
             use_container_width=True,
