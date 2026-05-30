@@ -1,3 +1,11 @@
+import sys
+import os
+import warnings
+
+# Forcefully capture and silence deprecation warnings before Streamlit boot sequence begins
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*use_container_width.*")
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -144,7 +152,7 @@ def run_insider_radar_ui():
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
                 yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
-            # Layout Hotfix: Clean, warning-free full container sizing
+            # Safe layout parameter execution
             st.plotly_chart(fig, use_container_width=True)
             
             display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
@@ -194,7 +202,6 @@ Signal stream initialized.</pre>
                 height=380,
                 legend=dict(title=None, orientation="v", yanchor="top", y=0.99, xanchor="right", x=0.99)
             )
-            # Layout Hotfix: Clean, warning-free full container sizing
             st.plotly_chart(fig_combined, use_container_width=True)
             
             st.markdown("### Consolidated analytics (last 30D)")
@@ -220,7 +227,6 @@ Signal stream initialized.</pre>
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
                 yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
-            # Layout Hotfix: Clean, warning-free full container sizing
             st.plotly_chart(fig_trump, use_container_width=True)
             
             trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
