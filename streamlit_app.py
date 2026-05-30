@@ -16,6 +16,13 @@ import re
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
+# 1. CORE SESSION STATE INITIALIZATION (CRITICAL CATCH)
+# -----------------------------------------------------------------------------
+# Establish the definitive baseline watch matrix before any layout blocks execute
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL", "DJT"]
+
+# -----------------------------------------------------------------------------
 # CORE DATA ENGINE (STANDALONE STREAM BUFFERS)
 # -----------------------------------------------------------------------------
 def get_historical_watchlist_data():
@@ -132,7 +139,8 @@ def render_custom_chart(fig):
 # INTERFACE RENDER LAYER
 # -----------------------------------------------------------------------------
 def run_insider_radar_ui():
-    active_watchlist = ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL", "DJT"]
+    # Safely pull our monitored tickers straight from state
+    active_watchlist = st.session_state.watchlist
 
     tab1, tab2_3_combined, tab4 = st.tabs([
         "[Insider]", 
