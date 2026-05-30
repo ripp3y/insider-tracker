@@ -2,10 +2,11 @@ import sys
 import os
 import warnings
 
-# Force suppress native Python engine warnings
+# Force suppress native Python engine and framework deprecation logs completely
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 warnings.filterwarnings("ignore", message=".*components.v1.*")
+os.environ["STREAMLIT_DEPRECATION_WARNINGS"] = "false"
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -128,7 +129,7 @@ def render_custom_chart(fig, element_id="plotly_canvas"):
     Silences framework deployment warnings completely.
     """
     html_str = fig.to_html(include_plotlyjs='cdn', full_html=False, config={'displayModeBar': False})
-    # FIXED: Calling the explicitly imported v1 submodule wrapper alias directly
+    # Explicit wrapper call avoids namespace interception logs
     components.html(f'<div id="{element_id}">{html_str}</div>', height=380, scrolling=False)
 
 # -----------------------------------------------------------------------------
