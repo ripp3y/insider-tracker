@@ -118,7 +118,6 @@ def get_combined_radar_data(watchlist):
 def run_insider_radar_ui():
     active_watchlist = ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL", "DJT"]
 
-    # Navigation Tabs matching high-density layout names
     tab1, tab2_3_combined, tab4 = st.tabs([
         "[Insider]", 
         "[Political/Whale Combined]", 
@@ -145,12 +144,15 @@ def run_insider_radar_ui():
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
                 yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(display_df[["Date", "Ticker", "Insider", "Value"]].style.format({"Value": "${:,.2f}"}), use_container_width=True, hide_index=True)
+            st.plotly_chart(fig, width=None)
+            
+            # Hotfix applied: Simplified, native string casting to avoid invalid format specifier ValueError
+            display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
+            display_df_formatted["Value"] = display_df_formatted["Value"].map(lambda x: f"${x:,.2f}")
+            st.dataframe(display_df_formatted, hide_index=True)
 
-    # MASTER TAB 2 & 3: NEW COMBINED LOOK
+    # MASTER TAB 2 & 3: COMBINED LOOK
     with tab2_3_combined:
-        # Green Matrix Signal Header Section
         st.markdown(
             """
             <div style="background-color: #0b1d12; border: 1px solid #1f663b; border-radius: 6px; padding: 15px; margin-bottom: 20px;">
@@ -177,7 +179,6 @@ Signal stream initialized.</pre>
         combined_data = get_combined_radar_data(active_watchlist)
         
         if not combined_data.empty:
-            # Styled stacked layout chart exactly matching the palette query
             fig_combined = px.bar(
                 combined_data, x="Ticker", y="Value", color="Source", 
                 barmode="stack",
@@ -193,16 +194,16 @@ Signal stream initialized.</pre>
                 height=380,
                 legend=dict(title=None, orientation="v", yanchor="top", y=0.99, xanchor="right", x=0.99)
             )
-            st.plotly_chart(fig_combined, use_container_width=True)
+            st.plotly_chart(fig_combined, width=None)
             
             st.markdown("### Consolidated analytics (last 30D)")
             
-            # Exact clean column breakdown requested by layout sheet
-            st.dataframe(
-                combined_data[["Date", "Ticker", "Source", "Buyer", "Value", "Details"]].style.format({"Value": "${:,.2f}"}),
-                use_container_width=True, 
-                hide_index=True
-            )
+            # Hotfix applied: Extracted formatting logic cleanly out of Styler block to completely fix crash
+            combined_formatted = combined_data[["Date", "Ticker", "Source", "Buyer", "Value", "Details"]].copy()
+            combined_formatted["Value"] = combined_formatted["Value"].map(lambda x: f"${x:,.2f}")
+            st.dataframe(combined_formatted, hide_index=True)
+        else:
+            st.info("No unified tracker logs match your current watchlist profile.")
 
     # TAB 4: TRUMP EXECUTIVE RADAR
     with tab4:
@@ -219,8 +220,12 @@ Signal stream initialized.</pre>
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
                 yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
-            st.plotly_chart(fig_trump, use_container_width=True)
-            st.dataframe(filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].style.format({"Value": "${:,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
+            st.plotly_chart(fig_trump, width=None)
+            
+            trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
+            trump_formatted["Value"] = trump_formatted["Value"].map(lambda x: f"${x:,.2f}")
+            trump_formatted["Shares"] = trump_formatted["Shares"].map(lambda x: f"{x:,}")
+            st.dataframe(trump_formatted, hide_index=True)
 
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
