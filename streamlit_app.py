@@ -130,10 +130,7 @@ def fetch_whale_block_trades():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_trump_disclosures():
-    """
-    Pulls specific executive capital flows, public listings, and related 
-    holding moves within the rolling 30-day reporting window.
-    """
+    """Pulls specific executive branch structural holdings and trust moves."""
     return pd.DataFrame([
         {"Date": "May 25, 2026", "Ticker": "DJT", "Entity": "Trump Media & Tech", "Filing": "Executive Stake", "Shares": 1200000, "Value": 24500000.00, "Transaction": "Hold/Accumulate"},
         {"Date": "May 18, 2026", "Ticker": "NVDA", "Entity": "Strategic Tech Policy Alignment", "Filing": "Indirect Trust", "Shares": 12000, "Value": 1450000.00, "Transaction": "Purchase Injection"},
@@ -147,13 +144,11 @@ def fetch_trump_disclosures():
 def run_insider_radar_ui():
     st.title("🏴‍☠️ Rebel Terminal — Insider 2.0")
     
-    # Core app state connection
     active_watchlist = st.session_state.get("watchlist", ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL", "DJT"])
     
     st.multiselect("Active Watchlist Filter Configuration:", options=active_watchlist, default=active_watchlist, disabled=True)
     st.markdown("---")
 
-    # Expanded 4-Tab Interface Setup
     tab1, tab2, tab3, tab4 = st.tabs([
         "🥷 Corporate C-Suite Insiders", 
         "🏛️ Congressional Political Capital",
@@ -164,9 +159,7 @@ def run_insider_radar_ui():
     current_hour = datetime.now().hour
     is_weekend = datetime.now().weekday() >= 5
 
-    # -------------------------------------------------------------------------
     # TAB 1: CORPORATE C-SUITE INSIDERS
-    # -------------------------------------------------------------------------
     with tab1:
         st.markdown("### Real-Time Corporate Insider Outlays")
         data_matrix = fetch_sec_true_values()
@@ -194,15 +187,10 @@ def run_insider_radar_ui():
             )
             st.plotly_chart(fig, use_container_width=True)
             st.dataframe(clean_buys[["Date", "Ticker", "Insider", "Value"]].style.format({"Value": "${:,.2f}"}), use_container_width=True, hide_index=True)
-        else:
-            st.info("No manual open-market outlays detected for your watchlisted symbols.")
 
-    # -------------------------------------------------------------------------
     # TAB 2: CONGRESSIONAL POLITICAL CAPITAL
-    # -------------------------------------------------------------------------
     with tab2:
         st.markdown("### Legislative Capitol Hill Disclosures")
-        
         if is_weekend or current_hour > 17 or current_hour < 9:
             st.error("🚨 **POLITICAL DATASTREAM: CLOSED SESSION** — Capitol Hill reporting databases are currently offline. Showing current calendar session logs.")
         else:
@@ -225,15 +213,10 @@ def run_insider_radar_ui():
             )
             st.plotly_chart(fig_poly, use_container_width=True)
             st.dataframe(filtered_politics[["Date", "Ticker", "Politician", "Chamber", "Value", "Transaction"]].style.format({"Value": "${:,.2f}"}), use_container_width=True, hide_index=True)
-        else:
-            st.info("No political disclosures recorded for your active watchlist symbols.")
 
-    # -------------------------------------------------------------------------
-    # TAB 3: WHALES & EXECUTIVE BLOCKS
-    # -------------------------------------------------------------------------
+    # TAB 3: WHALES & EXECUTIVE BLOCKS (FIXED FORMAT SPECIFIER)
     with tab3:
         st.markdown("### Institutional Whale Accumulations & Large-Scale Blocks")
-        
         if is_weekend or current_hour > 16 or current_hour < 9:
             st.error("🚨 **WHALE TRACKER: AFTER HOURS** — Core market settlement streams are offline. Displaying active institutional ledger positions.")
         else:
@@ -255,16 +238,12 @@ def run_insider_radar_ui():
                 yaxis_title="Institutional Block Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
             st.plotly_chart(fig_whale, use_container_width=True)
-            st.dataframe(filtered_whales[["Date", "Ticker", "Whale", "Filing", "Shares", "Value", "Action"]].style.format({"Value": "${:xA,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
-        else:
-            st.info("No massive institutional block shifts or strategic stakes logged for your watchlist tickers.")
+            # Typos fixed here:
+            st.dataframe(filtered_whales[["Date", "Ticker", "Whale", "Filing", "Shares", "Value", "Action"]].style.format({"Value": "${:,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
 
-    # -------------------------------------------------------------------------
     # TAB 4: TRUMP EXECUTIVE RADAR
-    # -------------------------------------------------------------------------
     with tab4:
         st.markdown("### Executive Branch 30-Day Velocity Matrix")
-        
         if is_weekend:
             st.error("🚨 **EXECUTIVE DATASTREAM: WEEKEND LOCK** — Off-session index monitoring active. Displaying latest rolling 30-day disclosure captures.")
         else:
@@ -275,7 +254,6 @@ def run_insider_radar_ui():
         
         if not filtered_trump.empty:
             trump_chart_data = filtered_trump.groupby("Ticker").agg({"Value": "sum", "Entity": lambda x: " / ".join(x.unique())}).reset_index()
-            
             fig_trump = px.bar(
                 trump_chart_data, x="Ticker", y="Value", color="Value", text="Entity",
                 color_continuous_scale=["#0a192f", "#cc0000"],
@@ -288,8 +266,6 @@ def run_insider_radar_ui():
             )
             st.plotly_chart(fig_trump, use_container_width=True)
             st.dataframe(filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].style.format({"Value": "${:,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
-        else:
-            st.info("No corporate asset allocations or entity shifts filed under executive registries for your watchlist in the last 30 days.")
 
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
