@@ -132,7 +132,7 @@ def fetch_whale_block_trades():
 def fetch_trump_disclosures():
     """
     Pulls specific executive capital flows, public listings, and related 
-    holding moves within the 30-day reporting loop.
+    holding moves within the rolling 30-day reporting window.
     """
     return pd.DataFrame([
         {"Date": "May 25, 2026", "Ticker": "DJT", "Entity": "Trump Media & Tech", "Filing": "Executive Stake", "Shares": 1200000, "Value": 24500000.00, "Transaction": "Hold/Accumulate"},
@@ -147,13 +147,13 @@ def fetch_trump_disclosures():
 def run_insider_radar_ui():
     st.title("🏴‍☠️ Rebel Terminal — Insider 2.0")
     
-    # Universal App Watchlist Memory Hook
+    # Core app state connection
     active_watchlist = st.session_state.get("watchlist", ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL", "DJT"])
     
     st.multiselect("Active Watchlist Filter Configuration:", options=active_watchlist, default=active_watchlist, disabled=True)
     st.markdown("---")
 
-    # Expanded Layout Navigation Setup (4-Tab Infrastructure)
+    # Expanded 4-Tab Interface Setup
     tab1, tab2, tab3, tab4 = st.tabs([
         "🥷 Corporate C-Suite Insiders", 
         "🏛️ Congressional Political Capital",
@@ -165,7 +165,7 @@ def run_insider_radar_ui():
     is_weekend = datetime.now().weekday() >= 5
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 1: CORPORATE INSIDERS
+    # TAB 1: CORPORATE C-SUITE INSIDERS
     # -------------------------------------------------------------------------
     with tab1:
         st.markdown("### Real-Time Corporate Insider Outlays")
@@ -198,7 +198,7 @@ def run_insider_radar_ui():
             st.info("No manual open-market outlays detected for your watchlisted symbols.")
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 2: CONGRESSIONAL TRADES
+    # TAB 2: CONGRESSIONAL POLITICAL CAPITAL
     # -------------------------------------------------------------------------
     with tab2:
         st.markdown("### Legislative Capitol Hill Disclosures")
@@ -229,7 +229,7 @@ def run_insider_radar_ui():
             st.info("No political disclosures recorded for your active watchlist symbols.")
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 3: WHALES & BLOCKS
+    # TAB 3: WHALES & EXECUTIVE BLOCKS
     # -------------------------------------------------------------------------
     with tab3:
         st.markdown("### Institutional Whale Accumulations & Large-Scale Blocks")
@@ -255,12 +255,12 @@ def run_insider_radar_ui():
                 yaxis_title="Institutional Block Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
             st.plotly_chart(fig_whale, use_container_width=True)
-            st.dataframe(filtered_whales[["Date", "Ticker", "Whale", "Filing", "Shares", "Value", "Action"]].style.format({"Value": "${:,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
+            st.dataframe(filtered_whales[["Date", "Ticker", "Whale", "Filing", "Shares", "Value", "Action"]].style.format({"Value": "${:xA,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
         else:
             st.info("No massive institutional block shifts or strategic stakes logged for your watchlist tickers.")
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 4: TRUMP 30-DAY EXECUTIVE COHORT
+    # TAB 4: TRUMP EXECUTIVE RADAR
     # -------------------------------------------------------------------------
     with tab4:
         st.markdown("### Executive Branch 30-Day Velocity Matrix")
@@ -276,7 +276,6 @@ def run_insider_radar_ui():
         if not filtered_trump.empty:
             trump_chart_data = filtered_trump.groupby("Ticker").agg({"Value": "sum", "Entity": lambda x: " / ".join(x.unique())}).reset_index()
             
-            # Sharp, high-contrast patriotic layout flow (Deep Blue to Crimson Red)
             fig_trump = px.bar(
                 trump_chart_data, x="Ticker", y="Value", color="Value", text="Entity",
                 color_continuous_scale=["#0a192f", "#cc0000"],
