@@ -2,11 +2,12 @@ import sys
 import os
 import warnings
 
-# Forcefully capture and silence deprecation warnings before Streamlit boot sequence begins
+# Hard suppress native Python warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import xml.etree.ElementTree as ET
@@ -120,6 +121,11 @@ def get_combined_radar_data(watchlist):
     combined = pd.concat([poly_df, whale_df], ignore_index=True)
     return combined[combined["Ticker"].isin(watchlist)]
 
+def render_custom_chart(fig):
+    """Converts a Plotly figure directly to HTML to bypass frame-level engine logging errors."""
+    html_str = fig.to_html(include_plotlyjs='cdn', full_html=False, config={'displayModeBar': False})
+    components.html(html_str, height=380, scrolling=False)
+
 # -----------------------------------------------------------------------------
 # INTERFACE RENDER LAYER
 # -----------------------------------------------------------------------------
@@ -150,10 +156,10 @@ def run_insider_radar_ui():
             fig.update_layout(
                 template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
-                yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
+                yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=350,
+                autosize=True
             )
-            # Safe layout parameter execution
-            st.plotly_chart(fig, use_container_width=True)
+            render_custom_chart(fig)
             
             display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
             display_df_formatted["Value"] = display_df_formatted["Value"].map(lambda x: f"${x:,.2f}")
@@ -199,10 +205,11 @@ Signal stream initialized.</pre>
                 xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist, 'title': 'Ticker'},
                 yaxis_title="Combined rebMatrix Signals ($)", 
                 margin=dict(l=10, r=10, t=10, b=10), 
-                height=380,
+                height=350,
+                autosize=True,
                 legend=dict(title=None, orientation="v", yanchor="top", y=0.99, xanchor="right", x=0.99)
             )
-            st.plotly_chart(fig_combined, use_container_width=True)
+            render_custom_chart(fig_combined)
             
             st.markdown("### Consolidated analytics (last 30D)")
             
@@ -225,9 +232,10 @@ Signal stream initialized.</pre>
             fig_trump.update_layout(
                 template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
-                yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
+                yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=350,
+                autosize=True
             )
-            st.plotly_chart(fig_trump, use_container_width=True)
+            render_custom_chart(fig_trump)
             
             trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
             trump_formatted["Value"] = trump_formatted["Value"].map(lambda x: f"${x:,.2f}")
