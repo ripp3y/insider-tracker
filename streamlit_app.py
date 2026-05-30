@@ -128,6 +128,7 @@ def render_custom_chart(fig, element_id="plotly_canvas"):
     Silences framework deployment warnings completely.
     """
     html_str = fig.to_html(include_plotlyjs='cdn', full_html=False, config={'displayModeBar': False})
+    # FIXED: Calling the explicitly imported v1 submodule wrapper alias directly
     components.html(f'<div id="{element_id}">{html_str}</div>', height=380, scrolling=False)
 
 # -----------------------------------------------------------------------------
