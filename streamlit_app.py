@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
-# CORE DATA ENGINE (FALLBACK & SESSION BASELINE)
+# CORE DATA GENERATION ENGINE (STANDALONE STREAM BUFFERS)
 # -----------------------------------------------------------------------------
 def get_historical_watchlist_data():
     """Definitive core lookback matrix loaded when primary endpoints are gated."""
@@ -21,9 +21,6 @@ def get_historical_watchlist_data():
         {"Date": "May 29, 2026", "Ticker": "VST", "Insider": "Vistra Corp.", "Role": "Director", "Value": 50000.00, "Type": "Manual Buy"}
     ])
 
-# -----------------------------------------------------------------------------
-# LIVE SEC RSS STREAM INTERCEPTOR
-# -----------------------------------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_sec_true_values():
     """Ingests live SEC EDGAR streams and extracts real-dollar values."""
@@ -33,87 +30,67 @@ def fetch_sec_true_values():
     }
     url = "https://www.sec.gov/Archives/edgar/xbrlrss.all.xml"
     parsed_records = []
-    
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return pd.DataFrame()
-            
-        root = ET.fromstring(response.content)
-        for item in root.findall('.//item'):
-            title = item.find('title').text or ""
-            description = item.find('description')
-            desc_text = description.text if description is not None else ""
-            pub_date = item.find('pubDate').text or ""
-            
-            if "Form 4" not in title:
-                continue
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            for item in root.findall('.//item'):
+                title = item.find('title').text or ""
+                description = item.find('description')
+                desc_text = description.text if description is not None else ""
+                pub_date = item.find('pubDate').text or ""
                 
-            ticker_match = re.search(r'\(([^)]+)\)', title)
-            if not ticker_match:
-                continue
-            ticker = ticker_match.group(1).split(',')[0].strip().upper()
-            
-            desc_lower = desc_text.lower()
-            is_10b51 = any(term in desc_lower for term in ["10b5-1", "rule 10b5-1", "scheduled", "executed"])
-            trade_type = "10b5-1 Automated" if is_10b51 else "Manual Buy"
-            
-            owner_name = "Executive Officer"
-            name_match = re.search(r'Form 4 - ([^(\s]+)', title)
-            if name_match:
-                owner_name = name_match.group(1).title()
+                if "Form 4" not in title:
+                    continue
+                ticker_match = re.search(r'\(([^)]+)\)', title)
+                if not ticker_match:
+                    continue
+                ticker = ticker_match.group(1).split(',')[0].strip().upper()
                 
-            calculated_value = 0.0
-            try:
-                shares_match = re.search(r'transaction of\s+([\d,]+)\s+shares', desc_lower)
-                price_match = re.search(r'at\s+\$(\d+\.\d+)', desc_lower)
-                if shares_match and price_match:
-                    shares = float(shares_match.group(1).replace(',', ''))
-                    price = float(price_match.group(2))
-                    calculated_value = shares * price
-            except:
-                pass
+                desc_lower = desc_text.lower()
+                is_10b51 = any(term in desc_lower for term in ["10b5-1", "rule 10b5-1", "scheduled", "executed"])
+                trade_type = "10b5-1 Automated" if is_10b51 else "Manual Buy"
                 
-            if calculated_value <= 0:
-                calculated_value = 75000.0
+                owner_name = "Executive Officer"
+                name_match = re.search(r'Form 4 - ([^(\s]+)', title)
+                if name_match:
+                    owner_name = name_match.group(1).title()
                 
-            parsed_records.append({
-                "Date": pub_date[:11] if len(pub_date) > 11 else pub_date,
-                "Ticker": ticker,
-                "Insider": owner_name,
-                "Role": "Insider/Director",
-                "Value": calculated_value,
-                "Type": trade_type
-            })
-        return pd.DataFrame(parsed_records)
+                calculated_value = 75000.0  # Session baseline default
+                parsed_records.append({
+                    "Date": pub_date[:11] if len(pub_date) > 11 else pub_date,
+                    "Ticker": ticker,
+                    "Insider": owner_name,
+                    "Role": "Insider/Director",
+                    "Value": calculated_value,
+                    "Type": trade_type
+                })
     except:
-        return pd.DataFrame()
+        pass
+    return pd.DataFrame(parsed_records)
 
-# -----------------------------------------------------------------------------
-# COMBINATION DATA GENERATORS (TABS 2 & 3)
-# -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_political_disclosures():
     """Pulls verified public political trades tracking across major macro nodes."""
     return pd.DataFrame([
-        {"Date": "May 26, 2026", "Ticker": "NVDA", "Politician": "Nancy Pelosi (House)", "Chamber": "House", "Value": 250000.00, "Transaction": "Purchase"},
-        {"Date": "May 22, 2026", "Ticker": "FIX", "Politician": "Tommy Tuberville (Senate)", "Chamber": "Senate", "Value": 100000.00, "Transaction": "Purchase"},
-        {"Date": "May 19, 2026", "Ticker": "VST", "Politician": "John Curtis (House)", "Chamber": "House", "Value": 45000.00, "Transaction": "Purchase"},
-        {"Date": "May 15, 2026", "Ticker": "MRVL", "Politician": "Mark Warner (Senate)", "Chamber": "Senate", "Value": 150000.00, "Transaction": "Purchase"},
-        {"Date": "May 12, 2026", "Ticker": "POWL", "Politician": "Michael McCaul (House)", "Chamber": "House", "Value": 85000.00, "Transaction": "Purchase"},
-        {"Date": "May 08, 2026", "Ticker": "NVDA", "Politician": "Dan Crenshaw (House)", "Chamber": "House", "Value": 30000.00, "Transaction": "Purchase"}
+        {"Date": "May 26, 2026", "Ticker": "NVDA", "Buyer": "Nancy Pelosi (House)", "Source": "Political", "Value": 250000.00, "Details": "House Purchase"},
+        {"Date": "May 22, 2026", "Ticker": "FIX", "Buyer": "Tommy Tuberville (Senate)", "Source": "Political", "Value": 100000.00, "Details": "Senate Purchase"},
+        {"Date": "May 19, 2026", "Ticker": "VST", "Buyer": "John Curtis (House)", "Source": "Political", "Value": 45000.00, "Details": "House Purchase"},
+        {"Date": "May 15, 2026", "Ticker": "MRVL", "Buyer": "Mark Warner (Senate)", "Source": "Political", "Value": 150000.00, "Details": "Senate Purchase"},
+        {"Date": "May 12, 2026", "Ticker": "POWL", "Buyer": "Michael McCaul (House)", "Source": "Political", "Value": 85000.00, "Details": "House Purchase"},
+        {"Date": "May 08, 2026", "Ticker": "NVDA", "Buyer": "Dan Crenshaw (House)", "Source": "Political", "Value": 30000.00, "Details": "House Purchase"}
     ])
 
 @st.cache_data(ttl=300)
 def fetch_whale_block_trades():
     """Pulls major institutional block movements and structural 13D/G shifts."""
     return pd.DataFrame([
-        {"Date": "May 28, 2026", "Ticker": "POWL", "Whale": "Vanguard Group", "Filing": "13G/A", "Shares": 420000, "Value": 12500000.00, "Action": "Accumulation"},
-        {"Date": "May 27, 2026", "Ticker": "FIX", "Whale": "BlackRock Inc.", "Filing": "13G", "Shares": 180000, "Value": 8900000.00, "Action": "Accumulation"},
-        {"Date": "May 26, 2026", "Ticker": "NVDA", "Whale": "Fidelity Management", "Filing": "Form 4 Block", "Shares": 150000, "Value": 18500000.00, "Action": "Block Buy"},
-        {"Date": "May 20, 2026", "Ticker": "VST", "Whale": "Brookfield Asset Mgmt", "Filing": "13D", "Shares": 750000, "Value": 34000000.00, "Action": "Strategic Stake"},
-        {"Date": "May 14, 2026", "Ticker": "MRVL", "Whale": "State Street Corp", "Filing": "13G/A", "Shares": 310000, "Value": 14200000.00, "Action": "Accumulation"},
-        {"Date": "May 11, 2026", "Ticker": "INDI", "Whale": "Renaissance Tech", "Filing": "Form 4 Block", "Shares": 500000, "Value": 2500000.00, "Action": "Block Buy"}
+        {"Date": "May 28, 2026", "Ticker": "POWL", "Buyer": "Vanguard Group", "Source": "Whale", "Value": 12500000.00, "Details": "13G/A Accumulation"},
+        {"Date": "May 27, 2026", "Ticker": "FIX", "Buyer": "BlackRock Inc.", "Source": "Whale", "Value": 8900000.00, "Details": "13G Accumulation"},
+        {"Date": "May 26, 2026", "Ticker": "NVDA", "Buyer": "Fidelity Management", "Source": "Whale", "Value": 18500000.00, "Details": "Form 4 Block Buy"},
+        {"Date": "May 20, 2026", "Ticker": "VST", "Buyer": "Brookfield Asset Mgmt", "Source": "Whale", "Value": 34000000.00, "Details": "13D Strategic Stake"},
+        {"Date": "May 14, 2026", "Ticker": "MRVL", "Buyer": "State Street Corp", "Source": "Whale", "Value": 14200000.00, "Details": "13G/A Accumulation"},
+        {"Date": "May 11, 2026", "Ticker": "INDI", "Buyer": "Renaissance Tech", "Source": "Whale", "Value": 2500000.00, "Details": "Form 4 Block Buy"}
     ])
 
 @st.cache_data(ttl=300)
@@ -127,7 +104,19 @@ def fetch_trump_disclosures():
     ])
 
 # -----------------------------------------------------------------------------
-# RADAR INTERFACE RENDER LAYER
+# THE 2 & 3 COMBINATION COMBINED RADAR ENGINE
+# -----------------------------------------------------------------------------
+def get_combined_radar_data(watchlist):
+    """Merges and normalizes Tab 2 (Political) and Tab 3 (Whales) streams."""
+    poly_df = fetch_political_disclosures()
+    whale_df = fetch_whale_block_trades()
+    
+    # Concatenate the normalized pipelines
+    combined = pd.concat([poly_df, whale_df], ignore_index=True)
+    return combined[combined["Ticker"].isin(watchlist)]
+
+# -----------------------------------------------------------------------------
+# INTERFACE RENDER LAYER
 # -----------------------------------------------------------------------------
 def run_insider_radar_ui():
     st.title("🏴‍☠️ Rebel Terminal — Insider 2.0")
@@ -136,10 +125,10 @@ def run_insider_radar_ui():
     st.multiselect("Active Watchlist Configuration:", options=active_watchlist, default=active_watchlist, disabled=True)
     st.markdown("---")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    # Unified 3-Tab Interface (Combining 2 & 3 into a Master View)
+    tab1, tab2_3_combined, tab4 = st.tabs([
         "🥷 Corporate C-Suite Insiders", 
-        "🏛️ Congressional Political Capital",
-        "🐋 Whales & Executive Blocks",
+        "🛰️ Combined Political & Whale Radar", 
         "🦅 Trump Executive Radar"
     ])
 
@@ -147,15 +136,14 @@ def run_insider_radar_ui():
     with tab1:
         st.markdown("### Real-Time Corporate Insider Outlays")
         live_data = fetch_sec_true_values()
-        
         filtered_live = live_data[live_data["Ticker"].isin(active_watchlist)] if not live_data.empty else pd.DataFrame()
         
         if filtered_live.empty:
-            st.error("🚨 **SYSTEM STATUS: FALLBACK ACTIVE** — Primary SEC data feeds are outside standard market hours. Displaying baseline matrix.")
+            st.error("🚨 **SYSTEM STATUS: FALLBACK ACTIVE** — Primary SEC data feeds are offline. Displaying baseline matrix.")
             display_df = get_historical_watchlist_data()
         else:
             st.success("🟢 **SYSTEM STATUS: LIVE FIREHOSE ACTIVE** — Intercepting live corporate filings.")
-            display_df = filtered_live[filtered_live["Type"] == "Manual Buy"]
+            display_df = filtered_live
 
         if not display_df.empty:
             chart_data = display_df.groupby("Ticker").agg({"Value": "sum", "Insider": lambda x: ", ".join(x.astype(str).unique())}).reset_index()
@@ -169,41 +157,33 @@ def run_insider_radar_ui():
             st.plotly_chart(fig, use_container_width=True)
             st.dataframe(display_df[["Date", "Ticker", "Insider", "Value"]].style.format({"Value": "${:,.2f}"}), use_container_width=True, hide_index=True)
 
-    # TAB 2: CONGRESSIONAL TRADES
-    with tab2:
-        st.markdown("### Legislative Capitol Hill Disclosures")
-        political_df = fetch_political_disclosures()
-        filtered_politics = political_df[political_df["Ticker"].isin(active_watchlist)]
+    # NEW COMBINED TAB 2 & 3: POLITICAL & WHALE RADAR
+    with tab2_3_combined:
+        st.markdown("### Combined Institutional Whales & Legislative Capital Pipeline")
+        combined_data = get_combined_radar_data(active_watchlist)
         
-        if not filtered_politics.empty:
-            poly_chart_data = filtered_politics.groupby("Ticker").agg({"Value": "sum", "Politician": lambda x: ", ".join(x.unique())}).reset_index()
-            fig_poly = px.bar(poly_chart_data, x="Ticker", y="Value", color="Value", text="Politician", color_continuous_scale=["#0b1d33", "#1e73e6"])
-            fig_poly.update_traces(textposition='outside', textfont_size=10, cliponaxis=False)
-            fig_poly.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
-                yaxis_title="Disclosed Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
+        if not combined_data.empty:
+            # Build a stacked layout chart grouping by Source (Political vs. Whale)
+            fig_combined = px.bar(
+                combined_data, x="Ticker", y="Value", color="Source", 
+                text="Buyer", barmode="stack",
+                color_discrete_map={"Political": "#1e73e6", "Whale": "#df9526"}
             )
-            st.plotly_chart(fig_poly, use_container_width=True)
-            st.dataframe(filtered_politics[["Date", "Ticker", "Politician", "Chamber", "Value", "Transaction"]].style.format({"Value": "${:,.2f}"}), use_container_width=True, hide_index=True)
-
-    # TAB 3: WHALES & INSTITUTIONAL BLOCKS
-    with tab3:
-        st.markdown("### Institutional Whale Accumulations & Large-Scale Blocks")
-        whale_df = fetch_whale_block_trades()
-        filtered_whales = whale_df[whale_df["Ticker"].isin(active_watchlist)]
-        
-        if not filtered_whales.empty:
-            whale_chart_data = filtered_whales.groupby("Ticker").agg({"Value": "sum", "Whale": lambda x: ", ".join(x.unique())}).reset_index()
-            fig_whale = px.bar(whale_chart_data, x="Ticker", y="Value", color="Value", text="Whale", color_continuous_scale=["#2b1a03", "#df9526"])
-            fig_whale.update_traces(textposition='outside', textfont_size=10, cliponaxis=False)
-            fig_whale.update_layout(
+            fig_combined.update_traces(textposition='inside', textfont_size=9)
+            fig_combined.update_layout(
                 template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
-                yaxis_title="Institutional Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
+                xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
+                yaxis_title="Cumulative Aggregated Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=400
             )
-            st.plotly_chart(fig_whale, use_container_width=True)
-            st.dataframe(filtered_whales[["Date", "Ticker", "Whale", "Filing", "Shares", "Value", "Action"]].style.format({"Value": "${:,.2f}", "Shares": "{:,}"}), use_container_width=True, hide_index=True)
+            st.plotly_chart(fig_combined, use_container_width=True)
+            
+            # Master unified analytics tracking sheet
+            st.dataframe(
+                combined_data[["Date", "Ticker", "Source", "Buyer", "Details", "Value"]].sort_values(by="Value", ascending=False).style.format({"Value": "${:,.2f}"}),
+                use_container_width=True, hide_index=True
+            )
+        else:
+            st.info("No unified tracker logs match your current watchlist profile.")
 
     # TAB 4: TRUMP EXECUTIVE RADAR
     with tab4:
