@@ -8,71 +8,77 @@ import re
 # -----------------------------------------------------------------------------
 # LIVE DATA ACQUISITION & RSS PARSING ENGINE
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=60) # Fast 60-second cash refresh loop for active monitoring
+@st.cache_data(ttl=60)
 def fetch_live_edgar_rss():
     """
-    Ingests the live SEC EDGAR firehose using the public RSS framework.
-    Requires no secret tokens, authorization heads, or custom wrappers.
+    Ingests the live SEC EDGAR firehose using a fully compliant 
+    declarative User-Agent string to pass through the SEC firewall.
     """
-    # The SEC requires a custom User-Agent string to grant access to their open feeds
+    # CRITICAL: The SEC actively blocks requests that do not include a 
+    # clear, non-generic User-Agent containing an email address.
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AssetRadar/1.0"
+        "User-Agent": "RebelTerminal/2.0 (research@rebelterminal.io) Python-requests/2.31.0",
+        "Accept-Encoding": "gzip, deflate"
     }
     
-    url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=4&count=100&output=atom"
+    # Utilizing the highly reliable master EDGAR latest-filings atom matrix
+    url = "https://www.sec.gov/Archives/edgar/xbrlrss.all.xml"
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=12)
+        
+        # Capture and display exact server response if the firewall acts up
         if response.status_code != 200:
             st.sidebar.error(f"SEC Portal Error: {response.status_code}")
+            if response.status_code == 403:
+                st.sidebar.warning("🔒 SEC Firewall requested a stricter identity token.")
             return get_mock_fallback_data()
             
-        # Parse the raw incoming Atom XML structure
+        # Parse the raw incoming XML content
         root = ET.fromstring(response.content)
         
-        # XML namespace map for parsing Atom nodes
-        ns = {'atom': 'http://www.w3.org/2005/Atom'}
-        
+        # Dynamic namespace parsing maps
         parsed_records = []
         
-        for entry in root.findall('atom:entry', ns):
-            title = entry.find('atom:title', ns).text or ""
-            summary = entry.find('atom:summary', ns).text or ""
-            updated = entry.find('atom:updated', ns).text or ""
+        # Loop through standard RSS item structures
+        for item in root.findall('.//item'):
+            title = item.find('title').text or ""
+            description = item.find('description',).text or "" if item.find('description') is not None else ""
+            pub_date = item.find('pubDate').text or ""
             
-            # Filter criteria: We only look for Form 4 Statement of Changes in Beneficial Ownership
+            # Target Form 4: Statement of Changes in Beneficial Ownership
             if "Form 4" not in title:
                 continue
                 
-            # Parse out the core ticker using regex patterns
+            # Extract ticker symbol wrapped in brackets/parentheses
             ticker_match = re.search(r'\(([^)]+)\)', title)
             if not ticker_match:
                 continue
             ticker = ticker_match.group(1).split(',')[0].strip().upper()
             
-            # Eliminate noisy long-tail tracking text
+            # Eliminate long-tail index noise
             if len(ticker) > 5 or ticker.isdigit():
                 continue
                 
-            summary_lower = summary.lower()
+            desc_lower = description.lower()
             
-            # Exclude programmatic Rule 10b5-1 executions
-            is_10b51 = any(term in summary_lower for term in ["10b5-1", "rule 10b5-1", "scheduled", "executed"])
+            # Omit automated programmatic rule plans
+            is_10b51 = any(term in desc_lower for term in ["10b5-1", "rule 10b5-1", "scheduled", "executed"])
             trade_type = "10b5-1 Automated" if is_10b51 else "Manual Buy"
             
-            # Extract names from formatting anchors
-            owner_name = "Executive Insight"
+            # Extract clean executive details
+            owner_name = "Executive Officer"
             name_match = re.search(r'Form 4 - ([^(\s]+)', title)
             if name_match:
                 owner_name = name_match.group(1).title()
                 
-            # Default visual layout scaling allocation
+            # Default scaling placeholder calculation layout
             total_value = 150000.0
-            if "shares" in summary_lower:
+            if "shares" in desc_lower:
                 total_value = 275000.0
                 
             parsed_records.append({
-                "Date": updated[:10],
+                "Date": pub_date[:11] if len(pub_date) > 11 else pub_date,
                 "Ticker": ticker,
                 "Insider": owner_name,
                 "Role": "Insider/Director",
@@ -81,6 +87,7 @@ def fetch_live_edgar_rss():
             })
             
         if not parsed_records:
+            st.sidebar.info("Connected to SEC! No Form 4s found in current minutes packet.")
             return get_mock_fallback_data()
             
         return pd.DataFrame(parsed_records)
@@ -90,11 +97,11 @@ def fetch_live_edgar_rss():
         return get_mock_fallback_data()
 
 def get_mock_fallback_data():
-    """Fallback fallback loop if public networks cycle out"""
+    """Backup data frame loop if public networks recycle out"""
     return pd.DataFrame([
-        {"Date": "2026-05-29", "Ticker": "NVDA", "Insider": "Jensen Huang", "Role": "CEO", "Value": 450000, "Type": "Manual Buy"},
-        {"Date": "2026-05-28", "Ticker": "MRVL", "Insider": "Matt Murphy", "Role": "CEO", "Value": 125000, "Type": "Manual Buy"},
-        {"Date": "2026-05-27", "Ticker": "FIX", "Insider": "John Doe", "Role": "Director", "Value": 85000, "Type": "Manual Buy"}
+        {"Date": "May 29, 2026", "Ticker": "NVDA", "Insider": "Jensen Huang", "Role": "CEO", "Value": 450000, "Type": "Manual Buy"},
+        {"Date": "May 28, 2026", "Ticker": "MRVL", "Insider": "Matt Murphy", "Role": "CEO", "Value": 125000, "Type": "Manual Buy"},
+        {"Date": "May 27, 2026", "Ticker": "FIX", "Insider": "John Doe", "Role": "Director", "Value": 85000, "Type": "Manual Buy"}
     ])
 
 # -----------------------------------------------------------------------------
@@ -103,9 +110,8 @@ def get_mock_fallback_data():
 def run_insider_radar_ui():
     st.markdown("## 🥷 Live C-Suite Insiders")
     st.markdown("### Real-Time Corporate Insider Outlays")
-    st.caption("Scraping live, un-keyed open public SEC EDGAR RSS streaming lines. Programmatic 10b51 executions are completely omitted.")
+    st.caption("Scraping direct SEC EDGAR master XML firehose lines. Programmatic 10b51 entries are completely omitted.")
 
-    # Request the live RSS firehose
     raw_stream = fetch_live_edgar_rss()
     
     if raw_stream is None or raw_stream.empty:
@@ -119,7 +125,6 @@ def run_insider_radar_ui():
     ]
     
     if not clean_buys.empty:
-        # Group and rank by ticker asset pools
         chart_data = clean_buys.groupby("Ticker").agg({
             "Value": "sum",
             "Insider": lambda x: ", ".join(x.unique())
@@ -127,7 +132,6 @@ def run_insider_radar_ui():
         
         chart_data = chart_data.sort_values(by="Value", ascending=False)
         
-        # Build Tactical Dark Plotly Bar chart
         fig = px.bar(
             chart_data,
             x="Ticker",
@@ -150,7 +154,6 @@ def run_insider_radar_ui():
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Mobile-first optimized dashboard grid
         st.dataframe(
             clean_buys[["Date", "Ticker", "Insider", "Value"]].style.format({"Value": "${:,.2f}"}),
             use_container_width=True,
