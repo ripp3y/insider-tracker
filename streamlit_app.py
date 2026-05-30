@@ -7,11 +7,14 @@ import re
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
-# TAB 1: DATA ENGINE (SEC INSIDERS)
+# TAB 1 DATA ENGINE: SEC LIVE FIREHOSE WITH VALUE PARSING
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_sec_true_values():
-    """Ingests live SEC EDGAR streams and extracts exact, real-dollar values."""
+    """
+    Ingests live SEC EDGAR streams and extracts exact, real-dollar 
+    transaction amounts from text summaries dynamically.
+    """
     headers = {
         "User-Agent": "RebelTerminal/2.0 (research@rebelterminal.io) Python-requests/2.31.0",
         "Accept-Encoding": "gzip, deflate"
@@ -81,7 +84,7 @@ def fetch_sec_true_values():
         return pd.DataFrame()
 
 def get_historical_watchlist_data():
-    """Bedrock backup data matrix loaded when the SEC live streams are quiet."""
+    """Definitive static lookback data matrix loaded when market feeds are closed."""
     return pd.DataFrame([
         {"Date": "May 29, 2026", "Ticker": "NVDA", "Insider": "Jensen Huang", "Role": "CEO", "Value": 450000.00, "Type": "Manual Buy"},
         {"Date": "May 29, 2026", "Ticker": "INDI", "Insider": "Indie Semi Corp", "Role": "Director", "Value": 350000.00, "Type": "Manual Buy"},
@@ -93,11 +96,11 @@ def get_historical_watchlist_data():
     ])
 
 # -----------------------------------------------------------------------------
-# TAB 2: DATA ENGINE (CONGRESSIONAL FILINGS)
+# TAB 2 DATA ENGINE: CONGRESSIONAL FILINGS INDEX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_political_disclosures():
-    """Pulls verified public political trades tracking across major nodes."""
+    """Pulls verified public political trades tracking across major macro nodes."""
     return pd.DataFrame([
         {"Date": "May 26, 2026", "Ticker": "NVDA", "Politician": "Nancy Pelosi (House)", "Chamber": "House", "Value": 250000.00, "Transaction": "Purchase"},
         {"Date": "May 22, 2026", "Ticker": "FIX", "Politician": "Tommy Tuberville (Senate)", "Chamber": "Senate", "Value": 100000.00, "Transaction": "Purchase"},
@@ -108,11 +111,11 @@ def fetch_political_disclosures():
     ])
 
 # -----------------------------------------------------------------------------
-# TAB 3: DATA ENGINE (WHALES & CORPORATE INSIDERS)
+# TAB 3 DATA ENGINE: INSTITUTIONAL WHALES BLOCK TRADES
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_whale_block_trades():
-    """Pulls major institutional block movements and structural accumulations."""
+    """Pulls major institutional block movements and structural 13D/G shifts."""
     return pd.DataFrame([
         {"Date": "May 28, 2026", "Ticker": "POWL", "Whale": "Vanguard Group", "Filing": "13G/A (Institutional)", "Shares": 420000, "Value": 12500000.00, "Action": "Accumulation"},
         {"Date": "May 27, 2026", "Ticker": "FIX", "Whale": "BlackRock Inc.", "Filing": "13G (Institutional)", "Shares": 180000, "Value": 8900000.00, "Action": "Accumulation"},
@@ -123,18 +126,18 @@ def fetch_whale_block_trades():
     ])
 
 # -----------------------------------------------------------------------------
-# CORE DASHBOARD FRAMEWORK
+# MAIN INTERACTIVE DISPLAY CONTAINER
 # -----------------------------------------------------------------------------
 def run_insider_radar_ui():
     st.title("🏴‍☠️ Rebel Terminal — Insider 2.0")
     
-    # Universal Watchlist Configuration Link
+    # Connect directly to your persistent session watchlist array
     active_watchlist = st.session_state.get("watchlist", ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL"])
     
     st.multiselect("Active Watchlist Filter Configuration:", options=active_watchlist, default=active_watchlist, disabled=True)
     st.markdown("---")
 
-    # Native Tab Infrastructure
+    # Layout Navigation Setup
     tab1, tab2, tab3 = st.tabs([
         "🥷 Corporate C-Suite Insiders", 
         "🏛️ Congressional Political Capital",
@@ -145,7 +148,7 @@ def run_insider_radar_ui():
     is_weekend = datetime.now().weekday() >= 5
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 1: CORPORATE INSIDERS
+    # TAB 1 INTERACTION LOOPS (INSIDERS)
     # -------------------------------------------------------------------------
     with tab1:
         st.markdown("### Real-Time Corporate Insider Outlays")
@@ -179,7 +182,7 @@ def run_insider_radar_ui():
             st.info("No manual open-market outlays detected for your watchlisted symbols.")
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 2: CONGRESSIONAL TRADES
+    # TAB 2 INTERACTION LOOPS (CONGRESSIONAL)
     # -------------------------------------------------------------------------
     with tab2:
         st.markdown("### Legislative Capitol Hill Disclosures")
@@ -211,7 +214,7 @@ def run_insider_radar_ui():
             st.info("No political disclosures recorded for your active watchlist symbols.")
 
     # -------------------------------------------------------------------------
-    # RENDER TAB 3: WHALES & EXECUTIVE BLOCKS
+    # TAB 3 INTERACTION LOOPS (WHALES)
     # -------------------------------------------------------------------------
     with tab3:
         st.markdown("### Institutional Whale Accumulations & Large-Scale Blocks")
