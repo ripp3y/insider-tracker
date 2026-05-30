@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
-# CORE REBEL MATRIX DATA ENGINE (FALLBACK & SESSION BASELINE)
+# CORE DATA ENGINE (FALLBACK & SESSION BASELINE)
 # -----------------------------------------------------------------------------
 def get_historical_watchlist_data():
     """Definitive core lookback matrix loaded when primary endpoints are gated."""
@@ -22,7 +22,7 @@ def get_historical_watchlist_data():
     ])
 
 # -----------------------------------------------------------------------------
-# TAB 1: SEC LIVE RSS STREAM INTERCEPTOR
+# LIVE SEC RSS STREAM INTERCEPTOR
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_sec_true_values():
@@ -90,7 +90,7 @@ def fetch_sec_true_values():
         return pd.DataFrame()
 
 # -----------------------------------------------------------------------------
-# TAB 2 & 3 COMBINATION DATA GENERATORS
+# COMBINATION DATA GENERATORS (TABS 2 & 3)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_political_disclosures():
@@ -143,19 +143,15 @@ def run_insider_radar_ui():
         "🦅 Trump Executive Radar"
     ])
 
-    current_hour = datetime.now().hour
-    is_weekend = datetime.now().weekday() >= 5
-
     # TAB 1: CORPORATE INSIDERS
     with tab1:
         st.markdown("### Real-Time Corporate Insider Outlays")
         live_data = fetch_sec_true_values()
         
-        # Checking if live feed is returning records or if we should use baseline data
         filtered_live = live_data[live_data["Ticker"].isin(active_watchlist)] if not live_data.empty else pd.DataFrame()
         
         if filtered_live.empty:
-            st.error("🚨 **SYSTEM STATUS: FALLBACK ACTIVE** — Primary SEC data feeds are outside standard market processing hours or limited. Displaying baseline matrix.")
+            st.error("🚨 **SYSTEM STATUS: FALLBACK ACTIVE** — Primary SEC data feeds are outside standard market hours. Displaying baseline matrix.")
             display_df = get_historical_watchlist_data()
         else:
             st.success("🟢 **SYSTEM STATUS: LIVE FIREHOSE ACTIVE** — Intercepting live corporate filings.")
