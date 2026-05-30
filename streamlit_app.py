@@ -108,14 +108,11 @@ def fetch_political_disclosures():
     ])
 
 # -----------------------------------------------------------------------------
-# TAB 3: DATA ENGINE (WHALES & CORPORATE INSIDERS INSIDER 2.0)
+# TAB 3: DATA ENGINE (WHALES & CORPORATE INSIDERS)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_whale_block_trades():
-    """
-    Pulls major institutional block movements, structural 13D/G accumulations, 
-    and executive block transitions matching the core tracking matrix.
-    """
+    """Pulls major institutional block movements and structural accumulations."""
     return pd.DataFrame([
         {"Date": "May 28, 2026", "Ticker": "POWL", "Whale": "Vanguard Group", "Filing": "13G/A (Institutional)", "Shares": 420000, "Value": 12500000.00, "Action": "Accumulation"},
         {"Date": "May 27, 2026", "Ticker": "FIX", "Whale": "BlackRock Inc.", "Filing": "13G (Institutional)", "Shares": 180000, "Value": 8900000.00, "Action": "Accumulation"},
@@ -128,29 +125,30 @@ def fetch_whale_block_trades():
 # -----------------------------------------------------------------------------
 # CORE DASHBOARD FRAMEWORK
 # -----------------------------------------------------------------------------
-def run_rebel_terminal():
+def run_insider_radar_ui():
     st.title("🏴‍☠️ Rebel Terminal — Insider 2.0")
     
-    # Universal App Watchlist Memory Link
+    # Universal Watchlist Configuration Link
     active_watchlist = st.session_state.get("watchlist", ["NVDA", "FIX", "MRVL", "INDI", "VST", "AMBQ", "VELO", "POWL"])
     
-    # Global multi-select monitoring block
     st.multiselect("Active Watchlist Filter Configuration:", options=active_watchlist, default=active_watchlist, disabled=True)
     st.markdown("---")
 
-    # Native Streamlit Tab Selector Engine
+    # Native Tab Infrastructure
     tab1, tab2, tab3 = st.tabs([
         "🥷 Corporate C-Suite Insiders", 
         "🏛️ Congressional Political Capital",
         "🐋 Whales & Executive Blocks"
     ])
 
+    current_hour = datetime.now().hour
+    is_weekend = datetime.now().weekday() >= 5
+
     # -------------------------------------------------------------------------
     # RENDER TAB 1: CORPORATE INSIDERS
     # -------------------------------------------------------------------------
     with tab1:
         st.markdown("### Real-Time Corporate Insider Outlays")
-        
         data_matrix = fetch_sec_true_values()
         
         if data_matrix.empty or len(data_matrix[data_matrix["Type"] == "Manual Buy"]) == 0:
@@ -186,9 +184,6 @@ def run_rebel_terminal():
     with tab2:
         st.markdown("### Legislative Capitol Hill Disclosures")
         
-        current_hour = datetime.now().hour
-        is_weekend = datetime.now().weekday() >= 5
-        
         if is_weekend or current_hour > 17 or current_hour < 9:
             st.error("🚨 **POLITICAL DATASTREAM: CLOSED SESSION** — Capitol Hill reporting databases are currently offline. Showing current calendar session logs.")
         else:
@@ -213,7 +208,7 @@ def run_rebel_terminal():
             st.plotly_chart(fig_poly, use_container_width=True)
             st.dataframe(filtered_politics[["Date", "Ticker", "Politician", "Chamber", "Value", "Transaction"]].style.format({"Value": "${:,.2f}"}), use_container_width=True, hide_index=True)
         else:
-            st.info("No political disclosures recorded for your active watchlist symbols in the current reporting period.")
+            st.info("No political disclosures recorded for your active watchlist symbols.")
 
     # -------------------------------------------------------------------------
     # RENDER TAB 3: WHALES & EXECUTIVE BLOCKS
@@ -232,7 +227,6 @@ def run_rebel_terminal():
         if not filtered_whales.empty:
             whale_chart_data = filtered_whales.groupby("Ticker").agg({"Value": "sum", "Whale": lambda x: ", ".join(x.unique())}).reset_index()
             
-            # Sharp corporate deep amber / gold scale for major capital allocations
             fig_whale = px.bar(
                 whale_chart_data, x="Ticker", y="Value", color="Value", text="Whale",
                 color_continuous_scale=["#2b1a03", "#df9526"],
@@ -250,4 +244,4 @@ def run_rebel_terminal():
 
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
-    run_rebel_terminal()
+    run_insider_radar_ui()
