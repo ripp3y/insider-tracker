@@ -2,7 +2,7 @@ import sys
 import os
 import warnings
 
-# Force suppress native Python engine and framework deprecation logs completely
+# Suppress native python engine framework logs completely
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 os.environ["STREAMLIT_DEPRECATION_WARNINGS"] = "false"
@@ -128,12 +128,12 @@ def get_combined_radar_data(watchlist):
         combined = pd.concat([poly_df, whale_df], ignore_index=True)
         return combined[combined["Ticker"].isin(watchlist)]
     except:
-        # Fallback to empty dataframe with matching structural columns if pipeline throws
         return pd.DataFrame(columns=["Date", "Ticker", "Source", "Buyer", "Value", "Details"])
 
 def render_custom_chart(fig):
-    """Renders the Plotly canvas natively using uniform markdown theme rules."""
-    st.plotly_chart(fig, use_container_width=True, theme="markdown", config={'displayModeBar': False})
+    """Renders the Plotly canvas safely using authorized theme rules."""
+    # FIXED: Swapped 'markdown' to 'streamlit' to resolve the internal engine validation fault
+    st.plotly_chart(fig, theme="streamlit", config={'displayModeBar': False})
 
 # -----------------------------------------------------------------------------
 # INTERFACE RENDER LAYER
@@ -171,7 +171,7 @@ def run_insider_radar_ui():
             
             display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
             display_df_formatted["Value"] = display_df_formatted["Value"].map(lambda x: f"${x:,.2f}")
-            st.dataframe(display_df_formatted, hide_index=True, use_container_width=True)
+            st.dataframe(display_df_formatted, hide_index=True)
 
     # MASTER TAB 2 & 3: COMBINED LOOK
     with tab2_3_combined:
@@ -183,22 +183,15 @@ def run_insider_radar_ui():
                     <div>
                         <h4 style="margin: 0; color: #ffffff; font-family: monospace; letter-spacing: 0.5px;">Rebel Matrix Signal</h4>
                         <p style="margin: 4px 0 0 0; color: #a3b899; font-size: 13px;">
-                            Combining SEC & Congressional Streams. Data refreshed via secure RebMatrix proxy. Intraday signals are streaming live.
+                            Combining SEC & Congressional Streams. Data refreshed via secure RebMatrix proxy.
                         </p>
                     </div>
                 </div>
-                <pre style="margin: 12px 0 0 0; background-color: #040a06; color: #3ddc84; font-family: monospace; font-size: 11px; padding: 8px; border-radius: 4px; border: 1px solid #14331e; line-height: 1.4;">
-Proxy active... SEC endpoint authenticated...
-Capitol Hill feed established...
-RebMatrix proxy handshake complete...
-Cryptographically signed packets verified...
-Signal stream initialized.</pre>
             </div>
             """, 
             unsafe_allow_html=True
         )
 
-        # FIXED: Variable explicitly declared and safely instantiated as fallback
         combined_data = get_combined_radar_data(active_watchlist)
         
         if not combined_data.empty:
@@ -223,7 +216,7 @@ Signal stream initialized.</pre>
             
             combined_formatted = combined_data[["Date", "Ticker", "Source", "Buyer", "Value", "Details"]].copy()
             combined_formatted["Value"] = combined_formatted["Value"].map(lambda x: f"${x:,.2f}")
-            st.dataframe(combined_formatted, hide_index=True, use_container_width=True)
+            st.dataframe(combined_formatted, hide_index=True)
         else:
             st.info("No unified tracker logs match your current watchlist profile.")
 
@@ -247,7 +240,7 @@ Signal stream initialized.</pre>
             trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
             trump_formatted["Value"] = trump_formatted["Value"].map(lambda x: f"${x:,.2f}")
             trump_formatted["Shares"] = trump_formatted["Shares"].map(lambda x: f"{x:,}")
-            st.dataframe(trump_formatted, hide_index=True, use_container_width=True)
+            st.dataframe(trump_formatted, hide_index=True)
 
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
