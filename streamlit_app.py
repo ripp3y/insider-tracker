@@ -5,11 +5,9 @@ import warnings
 # Force suppress native Python engine and framework deprecation logs completely
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
-warnings.filterwarnings("ignore", message=".*components.v1.*")
 os.environ["STREAMLIT_DEPRECATION_WARNINGS"] = "false"
 
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import xml.etree.ElementTree as ET
@@ -123,14 +121,12 @@ def get_combined_radar_data(watchlist):
     combined = pd.concat([poly_df, whale_df], ignore_index=True)
     return combined[combined["Ticker"].isin(watchlist)]
 
-def render_custom_chart(fig, element_id="plotly_canvas"):
+def render_custom_chart(fig):
     """
-    Converts a Plotly figure directly to HTML via safe components v1 wrapper.
-    Silences framework deployment warnings completely.
+    Renders the Plotly canvas natively using uniform theme rules.
+    Utilizes auto-layout tracking to clear out deprecated framework warnings.
     """
-    html_str = fig.to_html(include_plotlyjs='cdn', full_html=False, config={'displayModeBar': False})
-    # Explicit wrapper call avoids namespace interception logs
-    components.html(f'<div id="{element_id}">{html_str}</div>', height=380, scrolling=False)
+    st.plotly_chart(fig, use_container_width=True, theme="markdown", config={'displayModeBar': False})
 
 # -----------------------------------------------------------------------------
 # INTERFACE RENDER LAYER
@@ -162,14 +158,13 @@ def run_insider_radar_ui():
             fig.update_layout(
                 template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
-                yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=350,
-                autosize=True
+                yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=350
             )
-            render_custom_chart(fig, element_id="insider_chart")
+            render_custom_chart(fig)
             
             display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
             display_df_formatted["Value"] = display_df_formatted["Value"].map(lambda x: f"${x:,.2f}")
-            st.dataframe(display_df_formatted, hide_index=True)
+            st.dataframe(display_df_formatted, hide_index=True, use_container_width=True)
 
     # MASTER TAB 2 & 3: COMBINED LOOK
     with tab2_3_combined:
@@ -212,16 +207,15 @@ Signal stream initialized.</pre>
                 yaxis_title="Combined rebMatrix Signals ($)", 
                 margin=dict(l=10, r=10, t=10, b=10), 
                 height=350,
-                autosize=True,
-                legend=dict(title=None, orientation="v", yanchor="top", y=0.99, xanchor="right", x=0.99)
+                legend=dict(title=None, orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
-            render_custom_chart(fig_combined, element_id="combined_chart")
+            render_custom_chart(fig_combined)
             
             st.markdown("### Consolidated analytics (last 30D)")
             
             combined_formatted = combined_data[["Date", "Ticker", "Source", "Buyer", "Value", "Details"]].copy()
             combined_formatted["Value"] = combined_formatted["Value"].map(lambda x: f"${x:,.2f}")
-            st.dataframe(combined_formatted, hide_index=True)
+            st.dataframe(combined_formatted, hide_index=True, use_container_width=True)
         else:
             st.info("No unified tracker logs match your current watchlist profile.")
 
@@ -238,15 +232,14 @@ Signal stream initialized.</pre>
             fig_trump.update_layout(
                 template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
-                yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=350,
-                autosize=True
+                yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=350
             )
-            render_custom_chart(fig_trump, element_id="trump_chart")
+            render_custom_chart(fig_trump)
             
             trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
             trump_formatted["Value"] = trump_formatted["Value"].map(lambda x: f"${x:,.2f}")
             trump_formatted["Shares"] = trump_formatted["Shares"].map(lambda x: f"{x:,}")
-            st.dataframe(trump_formatted, hide_index=True)
+            st.dataframe(trump_formatted, hide_index=True, use_container_width=True)
 
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
