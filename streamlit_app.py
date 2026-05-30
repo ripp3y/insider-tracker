@@ -8,6 +8,7 @@ warnings.filterwarnings("ignore", message=".*use_container_width.*")
 warnings.filterwarnings("ignore", message=".*components.v1.*")
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import xml.etree.ElementTree as ET
@@ -123,12 +124,11 @@ def get_combined_radar_data(watchlist):
 
 def render_custom_chart(fig, element_id="plotly_canvas"):
     """
-    Converts a Plotly figure directly to HTML via native top-level components call.
-    Bypasses structural legacy namespaces to silence deployment logs.
+    Converts a Plotly figure directly to HTML via safe components v1 wrapper.
+    Silences framework deployment warnings completely.
     """
     html_str = fig.to_html(include_plotlyjs='cdn', full_html=False, config={'displayModeBar': False})
-    # Native direct call avoids framework analyzer logging flags
-    st.components.html(f'<div id="{element_id}">{html_str}</div>', height=380, scrolling=False)
+    components.html(f'<div id="{element_id}">{html_str}</div>', height=380, scrolling=False)
 
 # -----------------------------------------------------------------------------
 # INTERFACE RENDER LAYER
