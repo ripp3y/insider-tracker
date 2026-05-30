@@ -144,8 +144,8 @@ def run_insider_radar_ui():
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
                 yaxis_title="Allocation Value ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
-            # Layout Hotfix: Removed width=None and implemented native use_container_width=True
-            st.plotly_chart(fig, use_container_width=True)
+            # Deprecation Hotfix: Changed use_container_width=True to modern width="stretch"
+            st.plotly_chart(fig, width="stretch")
             
             display_df_formatted = display_df[["Date", "Ticker", "Insider", "Value"]].copy()
             display_df_formatted["Value"] = display_df_formatted["Value"].map(lambda x: f"${x:,.2f}")
@@ -194,8 +194,8 @@ Signal stream initialized.</pre>
                 height=380,
                 legend=dict(title=None, orientation="v", yanchor="top", y=0.99, xanchor="right", x=0.99)
             )
-            # Layout Hotfix: Updated layout mapping engine safely
-            st.plotly_chart(fig_combined, use_container_width=True)
+            # Deprecation Hotfix: Changed use_container_width=True to modern width="stretch"
+            st.plotly_chart(fig_combined, width="stretch")
             
             st.markdown("### Consolidated analytics (last 30D)")
             
@@ -220,8 +220,8 @@ Signal stream initialized.</pre>
                 coloraxis_showscale=False, xaxis={'categoryorder': 'array', 'categoryarray': active_watchlist},
                 yaxis_title="Executive Position Capital ($)", margin=dict(l=10, r=10, t=25, b=15), height=380
             )
-            # Layout Hotfix: Removed deprecated assignments
-            st.plotly_chart(fig_trump, use_container_width=True)
+            # Deprecation Hotfix: Changed use_container_width=True to modern width="stretch"
+            st.plotly_chart(fig_trump, width="stretch")
             
             trump_formatted = filtered_trump[["Date", "Ticker", "Entity", "Filing", "Shares", "Value", "Transaction"]].copy()
             trump_formatted["Value"] = trump_formatted["Value"].map(lambda x: f"${x:,.2f}")
