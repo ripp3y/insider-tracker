@@ -2,25 +2,9 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-# Now your functions follow safely below...
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / (loss + 1e-9)
-    return 100 - (100 / (1 + rs))
-
-@st.cache_data(ttl=900)
-def fetch_squeeze_telemetry(watchlist):
-    # rest of your code...
-
-
-@st.cache_data(ttl=900)
-def fetch_squeeze_telemetry(watchlist):
-    # rest of your code...
-
-
-# 1. DEFINE THIS FIRST: The technical calculator helper must execute before the cache wrapper initializes
+# -----------------------------------------------------------------------------
+# 1. TECHNICAL INDICATOR ENGINE (Must be defined first)
+# -----------------------------------------------------------------------------
 def calculate_rsi(series, period=14):
     """Computes standard 14-Day RSI to flag structural overbought/oversold nodes."""
     delta = series.diff()
@@ -30,10 +14,13 @@ def calculate_rsi(series, period=14):
     rs = gain / (loss + 1e-9)  # Prevent divide-by-zero
     return 100 - (100 / (1 + rs))
 
-# 2. DEFINE THIS SECOND: Caching wrapper can now safely map the dependent scope
+# -----------------------------------------------------------------------------
+# 2. DATA CACHING & FETCH LAYER (Perfect 4-space indentation)
+# -----------------------------------------------------------------------------
 @st.cache_data(ttl=900)
 def fetch_squeeze_telemetry(watchlist):
     records = []
+    
     for ticker in watchlist:
         try:
             tk = yf.Ticker(ticker)
@@ -47,7 +34,7 @@ def fetch_squeeze_telemetry(watchlist):
             current_rsi = float(hist['RSI'].iloc[-1]) if not hist['RSI'].empty else 50.0
             current_price = float(hist['Close'].iloc[-1])
             
-            # Key extraction with fallback maps
+            # Extract short percentages with fallbacks
             short_pct = info.get("shortPercentOfFloat", info.get("shortPercentOfFloat", 0.0))
             if short_pct is None: 
                 short_pct = 0.0
@@ -66,6 +53,7 @@ def fetch_squeeze_telemetry(watchlist):
                 float_est = info.get("float", info.get("impliedSharesOutstanding", 1)) or 1
                 short_pct = round((shares_short / float_est) * 100, 2)
 
+            # Squeeze calculation framework
             squeeze_score = (short_pct * 2.0) + (inst_pct * 0.5) + (days_to_cover * 1.5)
             if current_rsi < 35:
                 squeeze_score += 15
@@ -85,3 +73,19 @@ def fetch_squeeze_telemetry(watchlist):
             print(f"Proxy log error for {ticker}: {str(e)}")
             
     return pd.DataFrame(records)
+
+# -----------------------------------------------------------------------------
+# 3. INTERFACE RENDER LAYER
+# -----------------------------------------------------------------------------
+st.markdown("## ⚡ Alpha Matrix: AI Institutional Short Squeeze Radar")
+
+target_ai_pool = ["SOUN", "AI", "NVTS", "BBAI", "PLTR", "SMCI", "RUM", "PATH"]
+
+with st.spinner("Parsing market short-interest telemetry..."):
+    df_metrics = fetch_squeeze_telemetry(target_ai_pool)
+    
+if not df_metrics.empty:
+    df_metrics = df_metrics.sort_values(by="Squeeze Score", ascending=False)
+    st.dataframe(df_metrics, hide_index=True, use_container_width=True)
+else:
+    st.error("Terminal failed to parse tracking hooks. Refresh data proxy engine.")
