@@ -1,27 +1,5 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import yfinance as yf
-
-# -----------------------------------------------------------------------------
-# CORE ALGORITHMIC ENGINE
-# -----------------------------------------------------------------------------
-def calculate_rsi(series, period=14):
-    """Computes standard 14-Day RSI to flag structural overbought/oversold nodes."""
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    
-    rs = gain / (loss + 1e-9) # Prevent divide-by-zero
-    return 100 - (100 / (1 + rs))
-
 @st.cache_data(ttl=900)
 def fetch_squeeze_telemetry(watchlist):
-    """
-    Pulls live financial telemetry via Yahoo Finance API, mining short metrics,
-    RSI momentum, and institutional accumulation footprints.
-    """
     records = []
     
     for ticker in watchlist:
@@ -30,7 +8,8 @@ def fetch_squeeze_telemetry(watchlist):
             info = tk.info
             hist = tk.history(period="3mo")
             
-            if hist.empty:
+            # Catch empty info dictionaries or API blocks early
+            if not info or len(info) <= 5 or hist.empty:
                 continue
                 
             # Compute current technical layers
@@ -38,22 +17,34 @@ def fetch_squeeze_telemetry(watchlist):
             current_rsi = float(hist['RSI'].iloc[-1]) if not hist['RSI'].empty else 50.0
             current_price = float(hist['Close'].iloc[-1])
             
-            # Extract Raw Short Interest & Institutional Float Layers
-            short_pct = info.get("shortPercentOfFloat", 0.0) * 100  # Convert to standard %
-            inst_pct = info.get("heldPercentInstitutions", 0.0) * 100
-            shares_short = info.get("sharesShort", 0)
-            avg_volume = info.get("impliedSharesOutstanding", 1)  # Fallback divisor
+            # Safely extract short float percentage with secondary key check
+            short_pct = info.get("shortPercentOfFloat", info.get("shortPercentOfFloat", 0.0))
+            if short_pct is None: 
+                short_pct = 0.0
+            short_pct = short_pct * 100 if short_pct <= 1.0 else short_pct
             
-            # Estimate Days to Cover cleanly
-            daily_vol = info.get("averageVolume", 1)
-            days_to_cover = round(shares_short / daily_vol, 2) if daily_vol > 0 else 0.0
+            # Safely extract Institutional ownership matrix
+            inst_pct = info.get("heldPercentInstitutions", info.get("institutionPercentHeld", 0.0))
+            if inst_pct is None: 
+                inst_pct = 0.0
+            inst_pct = inst_pct * 100 if inst_pct <= 1.0 else inst_pct
             
+            # Safely determine Days to Cover with robust fallbacks
+            shares_short = info.get("sharesShort", 0) or 0
+            daily_vol = info.get("averageVolume", info.get("averageVolume10Day", 1)) or 1
+            days_to_cover = round(shares_short / daily_vol, 2) if shares_short > 0 else 0.0
+            
+            # Handle edge cases where short metrics are completely obfuscated
+            if short_pct == 0.0 and days_to_cover > 0:
+                # Approximate short float if raw percent is missing but short shares exist
+                float_est = info.get("float", info.get("impliedSharesOutstanding", 1)) or 1
+                short_pct = round((shares_short / float_est) * 100, 2)
+
             # Algorithmic Squeeze Priority Score
-            # Heavy weights applied to high short float combined with high institutional backing
             squeeze_score = (short_pct * 2.0) + (inst_pct * 0.5) + (days_to_cover * 1.5)
-            if current_rsi < 35:  # Oversold kicker (spring loaded)
+            if current_rsi < 35:
                 squeeze_score += 15
-            elif current_rsi > 75: # Hyper-extended warning
+            elif current_rsi > 75:
                 squeeze_score -= 10
 
             records.append({
@@ -66,69 +57,7 @@ def fetch_squeeze_telemetry(watchlist):
                 "Squeeze Score": round(squeeze_score, 2)
             })
         except Exception as e:
-            pass # Keep terminal stream clean if a single API ticker fails
+            # Print to terminal log to see exactly which ticker API is chocking
+            print(f"Proxy error logging tracker for {ticker}: {str(e)}")
             
     return pd.DataFrame(records)
-
-# -----------------------------------------------------------------------------
-# INTERFACE RENDER LAYER
-# -----------------------------------------------------------------------------
-def render_squeeze_scanner_ui():
-    st.markdown("## ⚡ Alpha Matrix: AI Institutional Short Squeeze Radar")
-    st.markdown(
-        "Tracking systemic blind spots where short-sellers are heavily exposed "
-        "while institutional whales lock down the underlying float."
-    )
-    
-    # Target candidates setting up across the broader AI ecosystem right now
-    target_ai_pool = ["SOUN", "AI", "NVTS", "BBAI", "PLTR", "SMCI", "RUM", "PATH", "HOLO"]
-    
-    with st.spinner("Parsing market short-interest telemetry..."):
-        df_metrics = fetch_squeeze_telemetry(target_ai_pool)
-        
-    if not df_metrics.empty:
-        # Sort matrix cleanly by the highest computational vulnerability score
-        df_metrics = df_metrics.sort_values(by="Squeeze Score", ascending=False)
-        
-        # 1. Plotly Data Visualization Component
-        fig = px.scatter(
-            df_metrics, 
-            x="Short Float %", 
-            y="Squeeze Score", 
-            size="Days to Cover",
-            color="14D RSI",
-            hover_name="Ticker",
-            text="Ticker",
-            color_continuous_scale="Viridis",
-            labels={"Short Float %": "Short Interest (% of Float)", "Squeeze Score": "Squeeze Priority Index"}
-        )
-        fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color='DarkSlateGrey')))
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=10, r=10, t=30, b=10),
-            height=380
-        )
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        
-        st.markdown("### 📊 Live Telemetry Logs")
-        st.dataframe(
-            df_metrics,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Squeeze Score": st.column_config.ProgressColumn(
-                    "Squeeze Priority Index",
-                    help="Calculated vulnerability matrix rating potential squeeze velocity",
-                    format="%.1f",
-                    min_value=0,
-                    max_value=120,
-                )
-            }
-        )
-    else:
-        st.error("Terminal failed to parse tracking hooks. Refresh data proxy engine.")
-
-if __name__ == "__main__":
-    render_squeeze_scanner_ui()
