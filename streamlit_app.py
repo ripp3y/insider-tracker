@@ -2,6 +2,24 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
+# Now your functions follow safely below...
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / (loss + 1e-9)
+    return 100 - (100 / (1 + rs))
+
+@st.cache_data(ttl=900)
+def fetch_squeeze_telemetry(watchlist):
+    # rest of your code...
+
+
+@st.cache_data(ttl=900)
+def fetch_squeeze_telemetry(watchlist):
+    # rest of your code...
+
+
 # 1. DEFINE THIS FIRST: The technical calculator helper must execute before the cache wrapper initializes
 def calculate_rsi(series, period=14):
     """Computes standard 14-Day RSI to flag structural overbought/oversold nodes."""
