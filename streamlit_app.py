@@ -3,7 +3,7 @@ import pandas as pd
 import yfinance as yf
 
 # -----------------------------------------------------------------------------
-# 1. TECHNICAL INDICATOR ENGINE (Must be defined first)
+# 1. TECHNICAL INDICATOR ENGINE
 # -----------------------------------------------------------------------------
 def calculate_rsi(series, period=14):
     """Computes standard 14-Day RSI to flag structural overbought/oversold nodes."""
@@ -15,12 +15,11 @@ def calculate_rsi(series, period=14):
     return 100 - (100 / (1 + rs))
 
 # -----------------------------------------------------------------------------
-# 2. DATA CACHING & FETCH LAYER (Perfect 4-space indentation)
+# 2. DATA CACHING & FETCH LAYER
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=900)
 def fetch_squeeze_telemetry(watchlist):
     records = []
-    
     for ticker in watchlist:
         try:
             tk = yf.Ticker(ticker)
@@ -35,22 +34,22 @@ def fetch_squeeze_telemetry(watchlist):
             current_price = float(hist['Close'].iloc[-1])
             
             # Extract short percentages with fallbacks
-            short_pct = info.get("shortPercentOfFloat", info.get("shortPercentOfFloat", 0.0))
+            short_pct = info.get("shortPercentOfFloat", 0.0)
             if short_pct is None: 
                 short_pct = 0.0
             short_pct = short_pct * 100 if short_pct <= 1.0 else short_pct
             
-            inst_pct = info.get("heldPercentInstitutions", info.get("institutionPercentHeld", 0.0))
+            inst_pct = info.get("heldPercentInstitutions", 0.0)
             if inst_pct is None: 
                 inst_pct = 0.0
             inst_pct = inst_pct * 100 if inst_pct <= 1.0 else inst_pct
             
             shares_short = info.get("sharesShort", 0) or 0
-            daily_vol = info.get("averageVolume", info.get("averageVolume10Day", 1)) or 1
+            daily_vol = info.get("averageVolume", 1) or 1
             days_to_cover = round(shares_short / daily_vol, 2) if shares_short > 0 else 0.0
             
             if short_pct == 0.0 and days_to_cover > 0:
-                float_est = info.get("float", info.get("impliedSharesOutstanding", 1)) or 1
+                float_est = info.get("float", 1) or 1
                 short_pct = round((shares_short / float_est) * 100, 2)
 
             # Squeeze calculation framework
