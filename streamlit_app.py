@@ -67,26 +67,19 @@ def fetch_squeeze_telemetry(watchlist):
 
 @st.cache_data(ttl=300)
 def fetch_whale_block_trades(ticker):
-    """
-    Analyzes intraday/recent session tick telemetry to isolate multi-million dollar 
-    institutional order blocks and classify net directional accumulation.
-    """
+    """Isolates multi-million dollar institutional order blocks based on volume spikes."""
     try:
         tk = yf.Ticker(ticker)
         hist = tk.history(period="5d", interval="15m")
         if hist.empty:
             return pd.DataFrame(), 0.0, 0.0
         
-        # Calculate typical bar dollar volume
         hist['Dollar_Volume'] = hist['Volume'] * hist['Close']
         avg_bar_vol = hist['Dollar_Volume'].mean()
-        
-        # Institutional Block Definition: Any 15m bar exceeding 2.5x standard volume
         block_threshold = avg_bar_vol * 2.5
         blocks = hist[hist['Dollar_Volume'] >= block_threshold].copy()
         
         if blocks.empty:
-            # Fallback to top 10% largest volume sessions if no extreme spikes occur
             blocks = hist.nlargest(5, 'Dollar_Volume').copy()
             
         blocks['Direction'] = blocks.apply(lambda r: "🐋 ACCUMULATION (Buy)" if r['Close'] >= r['Open'] else "🚨 DISTRIBUTION (Sell)", axis=1)
@@ -133,10 +126,11 @@ with tab1:
         st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
         st.dataframe(df_metrics, hide_index=True, width='stretch')
 
-# --- TAB 2: CORE PROFILES & WHALE TRACKING ---
+# --- TAB 2: CORE PROFILES, WHALES, & SECTOR INFRASTRUCTURE ---
 with tab2:
     st.markdown("### 🏢 Core Profiles & Infrastructure Tracking")
     
+    # 1. PRIMARY ECOSYSTEM WATCHLIST CONFIGURATION
     infra_watchlist = ["NVDA", "MRVL", "SMCI", "VRT", "BE", "REMX"]
     
     selected_ticker = st.selectbox(
@@ -159,15 +153,11 @@ with tab2:
 
     st.markdown("---")
     
-    # ACTIVE WHALE BLOCK TRACKER MODULE
+    # 2. ACTIVE WHALE BLOCK TRACKER MODULE
     st.markdown("#### 🐋 Live Institutional Block-Trade Stream")
-    st.markdown("Isolating anomalous trading spikes exceeding 2.5x normal volume to track active smart-money manipulation.")
-    
-    with st.spinner(f"Scanning blockchain & volume networks for {selected_ticker} order blocks..."):
+    with st.spinner(f"Scanning volume networks for {selected_ticker} order blocks..."):
         df_blocks, buy_vol, sell_vol = fetch_whale_block_trades(selected_ticker)
-        
         if not df_blocks.empty:
-            # Render a visual Net Flow delta meter
             net_flow = buy_vol - sell_vol
             flow_color = "green" if net_flow >= 0 else "red"
             st.markdown(
@@ -175,15 +165,78 @@ with tab2:
                 f"<span style='color:{flow_color}; font-size:18px; font-weight:bold;'>${net_flow:,.2f}</span>", 
                 unsafe_allow_html=True
             )
-            
-            # Render the live classified institutional ledger
             st.dataframe(df_blocks, hide_index=True, width='stretch')
-        else:
-            st.info(f"No anomalous institutional block trades flagged over the past 5 sessions for {selected_ticker}.")
 
     st.markdown("---")
     
-    # HISTORICAL SEC 13F POSITION MODIFICATIONS
+    # 3. ADVANCED TECHNICAL INFRASTRUCTURE BOARD & SCANNED HEATMAP
+    st.markdown("#### 📊 Sector Infrastructure Broadboard")
+    st.markdown("Cross-comparing real-time risk profiles, forward multiples, and high-water marks across your hardware and asset ecosystem.")
+    
+    infra_records = []
+    with st.spinner("Compiling full sector matrix data..."):
+        for ticker in infra_watchlist:
+            try:
+                t_ticker = yf.Ticker(ticker)
+                t_info = t_ticker.info
+                t_hist = t_ticker.history(period="1mo")
+                
+                # Dynamic real-time math fallbacks
+                current_p = t_info.get('currentPrice') or t_info.get('regularMarketPrice') or (t_hist['Close'].iloc[-1] if not t_hist.empty else 0.0)
+                fifty_two_w_high = t_info.get('fiftyTwoWeekHigh', 1e-9) or 1e-9
+                
+                # Calculate distance from historic ceiling
+                pct_off_high = ((fifty_two_w_high - current_p) / fifty_two_w_high) * 100
+                if pct_off_high < 0: pct_off_high = 0.0
+                
+                # Calculate technical RSI momentum
+                if not t_hist.empty:
+                    t_hist['RSI'] = calculate_rsi(t_hist['Close'])
+                    current_rsi_val = t_hist['RSI'].iloc[-1]
+                else:
+                    current_rsi_val = 50.0
+
+                infra_records.append({
+                    "Ticker": ticker,
+                    "Price": f"${current_p:,.2f}",
+                    "Forward P/E": round(t_info.get("forwardPE", 0.0), 2) if t_info.get("forwardPE") else "N/A",
+                    "Beta (Risk Factor)": round(t_info.get("beta", 1.0), 2) if t_info.get("beta") else 1.0,
+                    "14D RSI": round(current_rsi_val, 1),
+                    "Discount from 52W High %": round(pct_off_high, 2)
+                })
+            except Exception as e:
+                print(f"Watchlist row error for {ticker}: {str(e)}")
+                
+    if infra_records:
+        df_infra = pd.DataFrame(infra_records)
+        
+        # Build out a visual comparison matrix mapping price relative to risk profile
+        fig_infra = px.bar(
+            df_infra,
+            x="Ticker",
+            y="Discount from 52W High %",
+            color="14D RSI",
+            text_auto=".1f",
+            color_continuous_scale="Coolwarm",
+            labels={"Discount from 52W High %": "Pullback Depth (% Off Peak)", "14D RSI": "Momentum (RSI)"}
+        )
+        fig_infra.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=300
+        )
+        st.plotly_chart(fig_infra, width='stretch', config={'displayModeBar': False})
+        
+        # Render the complete telemetry matrix comparison board
+        st.dataframe(df_infra, hide_index=True, width='stretch')
+    else:
+        st.info("Ecosystem mapping stream temporarily recycling. Refresh page framework.")
+
+    st.markdown("---")
+    
+    # 4. HISTORICAL SEC 13F POSITION RECORDS
     st.markdown("#### 🏛️ Structural Holder Records (SEC Form 13F)")
     try:
         inst_holders = asset.institutional_holders
@@ -191,4 +244,4 @@ with tab2:
             inst_holders.columns = [c.replace('%', 'Pct').replace(' ', '_') for c in inst_holders.columns]
             st.dataframe(inst_holders, hide_index=True, width='stretch')
     except:
-        st.caption("SEC database locking active. Real-time stream running above.")
+        st.caption("SEC tracking pipeline locked.")
