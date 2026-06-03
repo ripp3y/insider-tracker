@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import plotly.express as px
 
 # -----------------------------------------------------------------------------
 # 1. TECHNICAL INDICATOR ENGINE
@@ -77,6 +78,10 @@ def fetch_squeeze_telemetry(watchlist):
 # 3. INTERFACE RENDER LAYER
 # -----------------------------------------------------------------------------
 st.markdown("## ⚡ Alpha Matrix: AI Institutional Short Squeeze Radar")
+st.markdown(
+    "Tracking systemic blind spots where short-sellers are heavily exposed "
+    "while institutional whales lock down the underlying float."
+)
 
 target_ai_pool = ["SOUN", "AI", "NVTS", "BBAI", "PLTR", "SMCI", "RUM", "PATH"]
 
@@ -85,6 +90,45 @@ with st.spinner("Parsing market short-interest telemetry..."):
     
 if not df_metrics.empty:
     df_metrics = df_metrics.sort_values(by="Squeeze Score", ascending=False)
-    st.dataframe(df_metrics, hide_index=True, use_container_width=True)
+    
+    # Updated to warning-free rendering standards
+    fig = px.scatter(
+        df_metrics, 
+        x="Short Float %", 
+        y="Squeeze Score", 
+        size="Days to Cover",
+        color="14D RSI",
+        hover_name="Ticker",
+        text="Ticker",
+        color_continuous_scale="Viridis",
+        labels={"Short Float %": "Short Interest (% of Float)", "Squeeze Score": "Squeeze Priority Index"}
+    )
+    fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=380
+    )
+    
+    # Modernized sizing arguments
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
+    
+    st.markdown("### 📊 Live Telemetry Logs")
+    st.dataframe(
+        df_metrics,
+        hide_index=True,
+        width='stretch',
+        column_config={
+            "Squeeze Score": st.column_config.ProgressColumn(
+                "Squeeze Priority Index",
+                help="Calculated vulnerability matrix rating potential squeeze velocity",
+                format="%.1f",
+                min_value=0,
+                max_value=120,
+            )
+        }
+    )
 else:
     st.error("Terminal failed to parse tracking hooks. Refresh data proxy engine.")
