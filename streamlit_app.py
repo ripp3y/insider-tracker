@@ -254,14 +254,14 @@ with tab2:
     if infra_records:
         df_infra = pd.DataFrame(infra_records)
         
-        # Lowercase "coolwarm" colorscale fixes the Plotly crash
+        # Native 'rdylbu_r' string bypasses the custom dictionary crash seamlessly
         fig_infra = px.bar(
             df_infra,
             x="Ticker",
             y="Discount from 52W High %",
             color="14D RSI",
             text_auto=".1f",
-            color_continuous_scale="coolwarm",
+            color_continuous_scale="rdylbu_r",
             labels={"Discount from 52W High %": "Pullback Depth (% Off Peak)", "14D RSI": "Momentum (RSI)"}
         )
         fig_infra.update_layout(
