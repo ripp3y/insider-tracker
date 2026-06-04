@@ -7,16 +7,16 @@ import requests
 # -----------------------------------------------------------------------------
 # 0. DEPLOYMENT BROWSER SPOOFING ENGINE (Fixes HTTP 401 Cloud Blocks)
 # -----------------------------------------------------------------------------
-# We manually configure a custom requests session with a realistic User-Agent 
-# header to bypass cloud server scraping restrictions.
-custom_session = requests.Session()
-custom_session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Origin": "https://finance.yahoo.com",
-    "Referer": "https://finance.yahoo.com/"
-})
+if "custom_session" not in st.session_state:
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Origin": "https://finance.yahoo.com",
+        "Referer": "https://finance.yahoo.com/"
+    })
+    st.session_state.custom_session = session
 
 # -----------------------------------------------------------------------------
 # 1. CORE ALGORITHMIC ENGINE (Backend Calculations)
@@ -41,10 +41,7 @@ def fetch_squeeze_telemetry(watchlist):
     records = []
     for ticker in watchlist:
         try:
-            # Pass our browser-spoofing session directly into the yfinance Ticker instantiation
-            tk = yf.Ticker(ticker, session=custom_session)
-            
-            # Using 1mo data keeps payload light and limits provider request flags
+            tk = yf.Ticker(ticker, session=st.session_state.custom_session)
             hist = tk.history(period="1mo")
             if hist.empty:
                 continue
@@ -52,16 +49,14 @@ def fetch_squeeze_telemetry(watchlist):
             try:
                 info = tk.info
                 if not info or len(info) <= 5:
-                    raise ValueError("Incomplete dictionary context retrieved.")
+                    raise ValueError("Incomplete telemetry metadata context.")
             except:
-                # Absolute fallback if .info remains locked out
                 info = {"shortPercentOfFloat": 0.05, "heldPercentInstitutions": 0.5, "averageVolume": 1000000}
                 
             hist['RSI'] = calculate_rsi(hist['Close'])
             current_rsi = float(hist['RSI'].iloc[-1]) if not hist['RSI'].empty else 50.0
             current_price = float(hist['Close'].iloc[-1])
             
-            # Standardize short interest variables
             short_pct = info.get("shortPercentOfFloat", 0.0)
             if short_pct is None: short_pct = 0.0
             short_pct = short_pct * 100 if short_pct <= 1.0 else short_pct
@@ -74,7 +69,6 @@ def fetch_squeeze_telemetry(watchlist):
             daily_vol = info.get("averageVolume", 1) or 1
             days_to_cover = round(shares_short / daily_vol, 2) if shares_short > 0 else 0.0
 
-            # Algorithmic Squeeze Priority Weighting
             squeeze_score = (short_pct * 2.0) + (inst_pct * 0.5) + (days_to_cover * 1.5)
             if current_rsi < 35: squeeze_score += 15
             elif current_rsi > 75: squeeze_score -= 10
@@ -91,7 +85,7 @@ def fetch_squeeze_telemetry(watchlist):
                 "Raw_RSI": current_rsi
             })
         except Exception as e:
-            print(f"Skipping temporary cloud connection stall for {ticker}: {str(e)}")
+            print(f"Skipping proxy lag variance for {ticker}: {str(e)}")
             continue
             
     return pd.DataFrame(records)
@@ -100,7 +94,7 @@ def fetch_squeeze_telemetry(watchlist):
 def fetch_whale_block_trades(ticker):
     """Analyzes 15-minute bars to isolate institutional blocks with safety bounds."""
     try:
-        tk = yf.Ticker(ticker, session=custom_session)
+        tk = yf.Ticker(ticker, session=st.session_state.custom_session)
         hist = tk.history(period="5d", interval="15m")
         if hist.empty:
             return pd.DataFrame(), 0.0, 0.0
@@ -144,20 +138,17 @@ default_watch = ["SOUN", "AI", "NVTS", "BBAI", "PLTR", "SMCI", "RUM", "PATH", "N
 if "global_watchlist" not in st.session_state:
     st.session_state.global_watchlist = default_watch
 
-# Add New Ticker Input
 new_ticker = st.sidebar.text_input("Add Ticker (e.g. AMD, TSLA):").upper().strip()
 if st.sidebar.button("➕ Add to Watchlist") and new_ticker:
     if new_ticker not in st.session_state.global_watchlist:
         st.session_state.global_watchlist.append(new_ticker)
         st.rerun()
 
-# Delete Ticker Selector
 ticker_to_remove = st.sidebar.selectbox("Select ticker to remove:", [""] + st.session_state.global_watchlist)
 if st.sidebar.button("🗑️ Delete from Watchlist") and ticker_to_remove:
     st.session_state.global_watchlist.remove(ticker_to_remove)
     st.rerun()
 
-# Display Current Raw Watchlist Pool
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"**Active Pool Count:** `{len(st.session_state.global_watchlist)}` tickers")
 st.sidebar.caption(", ".join(st.session_state.global_watchlist))
@@ -182,7 +173,6 @@ with tab1:
             df_metrics = fetch_squeeze_telemetry(st.session_state.global_watchlist)
             
         if not df_metrics.empty:
-            # Sort by priority score and isolate top 8 candidates to clear out plot clutter
             df_filtered = df_metrics.sort_values(by="Squeeze Score", ascending=False).head(8)
             
             fig = px.scatter(
@@ -209,7 +199,7 @@ with tab1:
             clean_df_filtered = df_filtered.drop(columns=["Raw_Price", "Raw_RSI"])
             st.dataframe(clean_df_filtered, hide_index=True, width='stretch')
         else:
-            st.warning("Data stream temporarily re-routing. If layout remains blank, toggle your watchlist pool to force update.")
+            st.warning("Data network re-routing traffic profiles. Modify watchlist assets to clear interface logs.")
 
 
 # --- TAB 2: CORE PROFILES, WHALES, & SECTOR INFRASTRUCTURE ---
@@ -222,33 +212,3 @@ with tab2:
     else:
         with st.spinner("Assembling structural profiling matrix..."):
             df_metrics = fetch_squeeze_telemetry(st.session_state.global_watchlist)
-            
-        available_tickers = df_metrics["Ticker"].tolist() if not df_metrics.empty else st.session_state.global_watchlist
-        
-        selected_ticker = st.selectbox(
-            "Select an underlying asset for real-time fundamental profiling:", 
-            available_tickers, 
-            index=0
-        )
-        
-        # Fundamental Matrix Key Cards
-        try:
-            asset = yf.Ticker(selected_ticker, session=custom_session)
-            asset_info = asset.info
-            mkt_cap = asset_info.get("marketCap", 0)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Market Cap", f"${mkt_cap:,.0f}" if mkt_cap and mkt_cap > 0 else "N/A")
-            col2.metric("Trailing P/E", f"{asset_info.get('trailingPE', 0.0):.2f}" if asset_info.get('trailingPE') else "N/A")
-            col3.metric("Forward P/E", f"{asset_info.get('forwardPE', 0.0):.2f}" if asset_info.get('forwardPE') else "N/A")
-            col4.metric("PEG Ratio", f"{asset_info.get('pegRatio', 0.0):.2f}" if asset_info.get('pegRatio') else "N/A")
-            
-            st.markdown(f"**Business Core:** {asset_info.get('longBusinessSummary', 'No profile cataloged.')}")
-        except:
-            st.caption("Valuation card matrix connection lag. Institutional logs streaming below.")
-
-        st.markdown("---")
-        
-        # 2. Active Whale Block Tracker Module
-        st.markdown("#### 🐋 Live Institutional Block-Trade Stream")
-        with st.spinner(f"Scanning volume
