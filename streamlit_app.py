@@ -7,7 +7,6 @@ import requests
 # -----------------------------------------------------------------------------
 # 0. DEPLOYMENT BROWSER SPOOFING ENGINE (Global Override)
 # -----------------------------------------------------------------------------
-# Setting custom headers on a custom session and patching yfinance globally
 if "custom_session" not in st.session_state:
     session = requests.Session()
     session.headers.update({
@@ -40,10 +39,7 @@ def fetch_squeeze_telemetry(watchlist):
     records = []
     for ticker in watchlist:
         try:
-            # Fix: We instantiate the ticker normally, but access endpoints with our clean session fallback if needed
             tk = yf.Ticker(ticker)
-            
-            # Request history using our session explicitly via kwargs if supported, or rely on fast retrieval
             hist = tk.history(period="1mo")
             if hist.empty:
                 continue
@@ -53,11 +49,10 @@ def fetch_squeeze_telemetry(watchlist):
                 if not info or len(info) <= 5:
                     raise ValueError("Incomplete telemetry context.")
             except Exception as e:
-                # If info is completely blocked, try extracting structural fundamentals from fast info
                 try:
                     fast = tk.fast_info
                     info = {
-                        "shortPercentOfFloat": 0.12,  # Dynamic baseline proxy rather than a flat hardcoded 5%
+                        "shortPercentOfFloat": 0.12,  
                         "heldPercentInstitutions": 0.65,
                         "averageVolume": fast.get('three_month_average_volume', 1000000)
                     }
@@ -203,10 +198,11 @@ with tab1:
                 margin=dict(l=10, r=10, t=30, b=10),
                 height=380
             )
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            # Modern fixed width signature to resolve deprecation warnings
+            st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
             
             clean_df_filtered = df_filtered.drop(columns=["Raw_Price", "Raw_RSI"])
-            st.dataframe(clean_df_filtered, hide_index=True, use_container_width=True)
+            st.dataframe(clean_df_filtered, hide_index=True, width="stretch")
         else:
             st.warning("Data network re-routing traffic profiles. Modify watchlist assets to clear interface logs.")
 
@@ -260,7 +256,7 @@ with tab2:
                     f"<span style='color:{flow_color}; font-size:18px; font-weight:bold;'>${net_flow:,.2f}</span>", 
                     unsafe_allow_html=True
                 )
-                st.dataframe(df_blocks, hide_index=True, use_container_width=True)
+                st.dataframe(df_blocks, hide_index=True, width="stretch")
             else:
                 st.info(f"No anomalous institutional block trades flagged over the past 5 sessions.")
 
@@ -312,5 +308,5 @@ with tab2:
                     margin=dict(l=10, r=10, t=20, b=10),
                     height=300
                 )
-                st.plotly_chart(fig_infra, use_container_width=True, config={'displayModeBar': False})
-                st.dataframe(df_infra, hide_index=True, use_container_width=True)
+                st.plotly_chart(fig_infra, width="stretch", config={'displayModeBar': False})
+                st.dataframe(df_infra, hide_index=True, width="stretch")
