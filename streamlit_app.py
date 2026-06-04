@@ -196,13 +196,13 @@ with tab1:
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 margin=dict(l=10, r=10, t=30, b=10),
-                height=380
+                height=380,
+                autosize=True  # Lets Plotly handle its own dimensions cleanly
             )
-            # Plotly expects use_container_width=True for full sizing
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            # Removed width parameters entirely to avoid Streamlit container warning loops
+            st.plotly_chart(fig, config={'displayModeBar': False})
             
             clean_df_filtered = df_filtered.drop(columns=["Raw_Price", "Raw_RSI"])
-            # Dataframe expects width="stretch" to eliminate the deployment warning completely
             st.dataframe(clean_df_filtered, hide_index=True, width="stretch")
         else:
             st.warning("Data network re-routing traffic profiles. Modify watchlist assets to clear interface logs.")
@@ -307,7 +307,8 @@ with tab2:
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     margin=dict(l=10, r=10, t=20, b=10),
-                    height=300
+                    height=300,
+                    autosize=True
                 )
-                st.plotly_chart(fig_infra, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_infra, config={'displayModeBar': False})
                 st.dataframe(df_infra, hide_index=True, width="stretch")
