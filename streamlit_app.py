@@ -198,10 +198,11 @@ with tab1:
                 margin=dict(l=10, r=10, t=30, b=10),
                 height=380
             )
-            # Modern fixed width signature to resolve deprecation warnings
-            st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
+            # Plotly expects use_container_width=True for full sizing
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
             
             clean_df_filtered = df_filtered.drop(columns=["Raw_Price", "Raw_RSI"])
+            # Dataframe expects width="stretch" to eliminate the deployment warning completely
             st.dataframe(clean_df_filtered, hide_index=True, width="stretch")
         else:
             st.warning("Data network re-routing traffic profiles. Modify watchlist assets to clear interface logs.")
@@ -308,5 +309,5 @@ with tab2:
                     margin=dict(l=10, r=10, t=20, b=10),
                     height=300
                 )
-                st.plotly_chart(fig_infra, width="stretch", config={'displayModeBar': False})
+                st.plotly_chart(fig_infra, use_container_width=True, config={'displayModeBar': False})
                 st.dataframe(df_infra, hide_index=True, width="stretch")
