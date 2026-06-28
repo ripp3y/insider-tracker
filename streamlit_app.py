@@ -136,27 +136,71 @@ def fetch_whale_block_trades(ticker):
 # -----------------------------------------------------------------------------
 # 2. DYNAMIC SIDEBAR WATCHLIST MANAGER
 # -----------------------------------------------------------------------------
-st.sidebar.title("🎛️ Watchlist Control Room")
+import streamlit as st
 
-default_watch = ["SOUN", "AI", "NVTS", "BBAI", "PLTR", "SMCI", "RUM", "PATH", "NVDA", "MRVL", "VRT", "BE"]
+# --- 1. INITIALIZATION & CLOUD/URL SYNC ---
+# Retrieve existing query parameters from the browser URL
+query_params = st.query_params
 
-if "global_watchlist" not in st.session_state:
-    st.session_state.global_watchlist = default_watch
+if "watchlist" not in st.session_state:
+    # If a watchlist exists in the cloud URL, parse it; otherwise start with your core defaults
+    if "symbols" in query_params:
+        # URL parameters are stored as strings; split by comma
+        st.session_state.watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
+    else:
+        # Your Masterclass Institutional Defaults
+        st.session_state.watchlist = ["SMH", "SOXX", "WOLF", "LITE", "FORM", "SKYT"]
 
-new_ticker = st.sidebar.text_input("Add Ticker (e.g. AMD, TSLA):").upper().strip()
-if st.sidebar.button("➕ Add to Watchlist") and new_ticker:
-    if new_ticker not in st.session_state.global_watchlist:
-        st.session_state.global_watchlist.append(new_ticker)
-        st.rerun()
 
-ticker_to_remove = st.sidebar.selectbox("Select ticker to remove:", [""] + st.session_state.global_watchlist)
-if st.sidebar.button("🗑️ Delete from Watchlist") and ticker_to_remove:
-    st.session_state.global_watchlist.remove(ticker_to_remove)
-    st.rerun()
+def update_cloud_storage():
+    """Syncs the current session state watchlist back to the cloud URL query parameters."""
+    if st.session_state.watchlist:
+        # Join symbols into a comma-separated string for the URL
+        st.query_params["symbols"] = ",".join(st.session_state.watchlist)
+    else:
+        # Clear parameter if watchlist is completely empty
+        if "symbols" in st.query_params:
+            del st.query_params["symbols"]
 
-st.sidebar.markdown("---")
-st.sidebar.markdown(f"**Active Pool Count:** `{len(st.session_state.global_watchlist)}` tickers")
-st.sidebar.caption(", ".join(st.session_state.global_watchlist))
+
+# --- 2. WATCHLIST INTERFACE ENGINE ---
+st.markdown("## 🦅 Rebel Terminal Watchlist Manager")
+st.caption("Synchronized to Streamlit Cloud URL State")
+
+# Quick Action: Add New Bottleneck Ticker
+with st.form(key="add_ticker_form", clear_on_submit=True):
+    new_ticker = st.text_input("Enter Ticker Symbol (e.g., MU, NVDA, POWL):").strip().upper()
+    submit_button = st.form_submit_button(label="⚡ Add to Watchlist")
+    
+    if submit_button and new_ticker:
+        if new_ticker not in st.session_state.watchlist:
+            st.session_state.watchlist.append(new_ticker)
+            update_cloud_storage()  # Flush immediately to the cloud parameters
+            st.toast(f"Added {new_ticker} to cloud watchlist!", icon="✅")
+        else:
+            st.toast(f"{new_ticker} is already in your matrix.", icon="ℹ️")
+
+# Display and Manage Current Assets
+if st.session_state.watchlist:
+    st.write("### Current Active Matrix")
+    
+    # Render scannable metric columns or a removal layout
+    for ticker in st.session_state.watchlist:
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown(f"**` {ticker} `** — Tracking Institutional Order Blocks")
+        with col2:
+            # Unique key for each delete button to prevent state collision
+            if st.button(f"🪓 Trim", key=f"del_{ticker}"):
+                st.session_state.watchlist.remove(ticker)
+                update_cloud_storage()  # Update cloud parameters immediately
+                st.rerun()
+else:
+    st.info("Watchlist is currently empty. Add tickers above to build your core-satellite matrix.")
+
+# --- 3. PASSTHROUGH DATA LINE ---
+# Use this variable below in your script to feed your live data/scraping pipelines
+active_tickers = st.session_state.watchlist
 
 # -----------------------------------------------------------------------------
 # 3. APPLICATION INTERFACE NAVIGATION (Tab Setup)
