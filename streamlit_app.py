@@ -1,358 +1,56 @@
 import streamlit as st
-import pandas as pd
-import yfinance as yf
-import plotly.express as px
-import requests
-
-# -----------------------------------------------------------------------------
-# 0. DEPLOYMENT BROWSER SPOOFING ENGINE (Global Override)
-# -----------------------------------------------------------------------------
-if "custom_session" not in st.session_state:
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-    })
-    st.session_state.custom_session = session
-
-# -----------------------------------------------------------------------------
-# 1. CORE ALGORITHMIC ENGINE (Backend Calculations)
-# -----------------------------------------------------------------------------
-def calculate_rsi(series, period=14):
-    """Computes standard 14-Day RSI to flag structural overbought/oversold nodes."""
-    if len(series) < period:
-        return pd.Series(50.0, index=series.index)
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    
-    rs = gain / (loss + 1e-9)
-    return 100 - (100 / (1 + rs))
-
-@st.cache_data(ttl=600)
-def fetch_squeeze_telemetry(watchlist):
-    """Parses short interest data and flags short squeeze risk models with strict error insulation."""
-    if not watchlist:
-        return pd.DataFrame()
-        
-    records = []
-    for ticker in watchlist:
-        try:
-            tk = yf.Ticker(ticker)
-            hist = tk.history(period="1mo")
-            if hist.empty:
-                continue
-                
-            try:
-                info = tk.info
-                if not info or len(info) <= 5:
-                    raise ValueError("Incomplete telemetry context.")
-            except Exception as e:
-                try:
-                    fast = tk.fast_info
-                    info = {
-                        "shortPercentOfFloat": 0.12,  
-                        "heldPercentInstitutions": 0.65,
-                        "averageVolume": fast.get('three_month_average_volume', 1000000)
-                    }
-                except:
-                    info = {"shortPercentOfFloat": 0.05, "heldPercentInstitutions": 0.5, "averageVolume": 1000000}
-                
-            hist['RSI'] = calculate_rsi(hist['Close'])
-            current_rsi = float(hist['RSI'].iloc[-1]) if not hist['RSI'].empty else 50.0
-            current_price = float(hist['Close'].iloc[-1])
-            
-            short_pct = info.get("shortPercentOfFloat", 0.0)
-            if short_pct is None: short_pct = 0.0
-            short_pct = short_pct * 100 if short_pct <= 1.0 else short_pct
-            
-            inst_pct = info.get("heldPercentInstitutions", 0.0)
-            if inst_pct is None: inst_pct = 0.0
-            inst_pct = inst_pct * 100 if inst_pct <= 1.0 else inst_pct
-            
-            shares_short = info.get("sharesShort", 0) or 0
-            daily_vol = info.get("averageVolume", 1) or 1
-            days_to_cover = round(shares_short / daily_vol, 2) if shares_short > 0 else 0.0
-
-            squeeze_score = (short_pct * 2.0) + (inst_pct * 0.5) + (days_to_cover * 1.5)
-            if current_rsi < 35: squeeze_score += 15
-            elif current_rsi > 75: squeeze_score -= 10
-
-            records.append({
-                "Ticker": ticker,
-                "Price": f"${current_price:,.2f}",
-                "Short Float %": round(short_pct, 2),
-                "Inst. Owned %": round(inst_pct, 2),
-                "Days to Cover": days_to_cover,
-                "14D RSI": round(current_rsi, 1),
-                "Squeeze Score": round(squeeze_score, 2),
-                "Raw_Price": current_price,
-                "Raw_RSI": current_rsi
-            })
-        except Exception as e:
-            continue
-            
-    return pd.DataFrame(records)
-
-@st.cache_data(ttl=300)
-def fetch_whale_block_trades(ticker):
-    """Analyzes 15-minute bars to isolate institutional blocks with safety bounds."""
-    try:
-        tk = yf.Ticker(ticker)
-        hist = tk.history(period="5d", interval="15m")
-        if hist.empty:
-            return pd.DataFrame(), 0.0, 0.0
-        
-        hist['Dollar_Volume'] = hist['Volume'] * hist['Close']
-        avg_bar_vol = hist['Dollar_Volume'].mean()
-        block_threshold = avg_bar_vol * 2.5
-        blocks = hist[hist['Dollar_Volume'] >= block_threshold].copy()
-        
-        if blocks.empty:
-            blocks = hist.nlargest(5, 'Dollar_Volume').copy()
-            
-        blocks['Direction'] = blocks.apply(
-            lambda r: "🐋 ACCUMULATION (Buy)" if r['Close'] >= r['Open'] else "🚨 DISTRIBUTION (Sell)", 
-            axis=1
-        )
-        
-        total_buy_blocks = blocks[blocks['Direction'] == "🐋 ACCUMULATION (Buy)"]['Dollar_Volume'].sum()
-        total_sell_blocks = blocks[blocks['Direction'] == "🚨 DISTRIBUTION (Sell)"]['Dollar_Volume'].sum()
-        
-        block_log = []
-        for index, row in blocks.tail(6).iterrows():
-            block_log.append({
-                "Timestamp": index.strftime('%m-%d %H:%M'),
-                "Block Type": row['Direction'],
-                "Volume (Shares)": f"{row['Volume']:,.0f}",
-                "Total Value": f"${row['Dollar_Volume']:,.0f}"
-            })
-            
-        return pd.DataFrame(block_log), total_buy_blocks, total_sell_blocks
-    except:
-        return pd.DataFrame(), 0.0, 0.0
-
-# -----------------------------------------------------------------------------
-# 2. DYNAMIC SIDEBAR WATCHLIST MANAGER
-# -----------------------------------------------------------------------------
-import streamlit as st
 
 # --- 1. INITIALIZATION & CLOUD/URL SYNC ---
-# Retrieve existing query parameters from the browser URL
 query_params = st.query_params
 
-if "watchlist" not in st.session_state:
-    # If a watchlist exists in the cloud URL, parse it; otherwise start with your core defaults
+# Using 'global_watchlist' to perfectly match your other tabs and fix the AttributeError
+if "global_watchlist" not in st.session_state:
     if "symbols" in query_params:
-        # URL parameters are stored as strings; split by comma
-        st.session_state.watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
+        # Pull from cloud URL parameter if it exists
+        st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
     else:
-        # Your Masterclass Institutional Defaults
-        st.session_state.watchlist = ["SMH", "SOXX", "WOLF", "LITE", "FORM", "SKYT"]
+        # Default Whale Anchors & Bottlenecks
+        st.session_state.global_watchlist = ["SMH", "SOXX", "WOLF", "LITE", "FORM", "SKYT"]
 
 
 def update_cloud_storage():
-    """Syncs the current session state watchlist back to the cloud URL query parameters."""
-    if st.session_state.watchlist:
-        # Join symbols into a comma-separated string for the URL
-        st.query_params["symbols"] = ",".join(st.session_state.watchlist)
+    """Syncs the current global_watchlist back to the browser URL."""
+    if st.session_state.global_watchlist:
+        st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
     else:
-        # Clear parameter if watchlist is completely empty
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
 
 
-# --- 2. WATCHLIST INTERFACE ENGINE ---
+# --- 2. INTERFACE ENGINE ---
 st.markdown("## 🦅 Rebel Terminal Watchlist Manager")
 st.caption("Synchronized to Streamlit Cloud URL State")
 
-# Quick Action: Add New Bottleneck Ticker
+# Form to safely add new tickers
 with st.form(key="add_ticker_form", clear_on_submit=True):
     new_ticker = st.text_input("Enter Ticker Symbol (e.g., MU, NVDA, POWL):").strip().upper()
     submit_button = st.form_submit_button(label="⚡ Add to Watchlist")
     
     if submit_button and new_ticker:
-        if new_ticker not in st.session_state.watchlist:
-            st.session_state.watchlist.append(new_ticker)
-            update_cloud_storage()  # Flush immediately to the cloud parameters
-            st.toast(f"Added {new_ticker} to cloud watchlist!", icon="✅")
+        if new_ticker not in st.session_state.global_watchlist:
+            st.session_state.global_watchlist.append(new_ticker)
+            update_cloud_storage()
+            st.toast(f"Added {new_ticker} to cloud matrix!", icon="✅")
+            st.rerun()
         else:
-            st.toast(f"{new_ticker} is already in your matrix.", icon="ℹ️")
+            st.toast(f"{new_ticker} is already active.", icon="ℹ️")
 
-# Display and Manage Current Assets
-if st.session_state.watchlist:
+# Render active matrix with trim buttons
+if st.session_state.global_watchlist:
     st.write("### Current Active Matrix")
-    
-    # Render scannable metric columns or a removal layout
-    for ticker in st.session_state.watchlist:
+    for ticker in st.session_state.global_watchlist:
         col1, col2 = st.columns([4, 1])
         with col1:
             st.markdown(f"**` {ticker} `** — Tracking Institutional Order Blocks")
         with col2:
-            # Unique key for each delete button to prevent state collision
             if st.button(f"🪓 Trim", key=f"del_{ticker}"):
-                st.session_state.watchlist.remove(ticker)
-                update_cloud_storage()  # Update cloud parameters immediately
+                st.session_state.global_watchlist.remove(ticker)
+                update_cloud_storage()
                 st.rerun()
 else:
-    st.info("Watchlist is currently empty. Add tickers above to build your core-satellite matrix.")
-
-# --- 3. PASSTHROUGH DATA LINE ---
-# Use this variable below in your script to feed your live data/scraping pipelines
-active_tickers = st.session_state.watchlist
-
-# -----------------------------------------------------------------------------
-# 3. APPLICATION INTERFACE NAVIGATION (Tab Setup)
-# -----------------------------------------------------------------------------
-st.title("Asymmetry: Risk & Alpha Dashboard")
-
-tab1, tab2 = st.tabs(["⚡ Institutional Squeeze Radar", "📊 Market Alpha & Profiles"])
-
-# --- TAB 1: AUTOMATED SQUEEZE RADAR ---
-with tab1:
-    st.markdown("### Systemic Short Exposure Matrix")
-    st.markdown("Algorithmic filter parsing your custom watchlist pool and presenting **only the top 8 assets** with acute short exposure risk matrices.")
-
-    if not st.session_state.global_watchlist:
-        st.info("Your watchlist pool is empty. Add tickers via the sidebar panel.")
-    else:
-        with st.spinner("Parsing market short-interest telemetry..."):
-            df_metrics = fetch_squeeze_telemetry(st.session_state.global_watchlist)
-            
-        if not df_metrics.empty:
-            df_filtered = df_metrics.sort_values(by="Squeeze Score", ascending=False).head(8)
-            
-            fig = px.scatter(
-                df_filtered, 
-                x="Short Float %", 
-                y="Squeeze Score", 
-                size="Days to Cover" if df_filtered["Days to Cover"].sum() > 0 else None,
-                color="14D RSI",
-                hover_name="Ticker",
-                text="Ticker",
-                color_continuous_scale="Viridis",
-                labels={"Short Float %": "Short Interest (% of Float)", "Squeeze Score": "Squeeze Priority Index"}
-            )
-            fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color='DarkSlateGrey')))
-            fig.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=10, r=10, t=30, b=10),
-                height=380,
-                autosize=True  # Lets Plotly handle its own dimensions cleanly
-            )
-            # Removed width parameters entirely to avoid Streamlit container warning loops
-            st.plotly_chart(fig, config={'displayModeBar': False})
-            
-            clean_df_filtered = df_filtered.drop(columns=["Raw_Price", "Raw_RSI"])
-            st.dataframe(clean_df_filtered, hide_index=True, width="stretch")
-        else:
-            st.warning("Data network re-routing traffic profiles. Modify watchlist assets to clear interface logs.")
-
-# --- TAB 2: CORE PROFILES, WHALES, & SECTOR INFRASTRUCTURE ---
-with tab2:
-    st.markdown("### 🏢 Core Profiles & Infrastructure Tracking")
-    st.markdown("Monitoring fundamental valuations, institutional block allocations, and technical support nodes.")
-    
-    if not st.session_state.global_watchlist:
-        st.info("Your watchlist pool is empty.")
-    else:
-        with st.spinner("Assembling structural profiling matrix..."):
-            df_metrics = fetch_squeeze_telemetry(st.session_state.global_watchlist)
-            
-        available_tickers = df_metrics["Ticker"].tolist() if not df_metrics.empty else st.session_state.global_watchlist
-        
-        selected_ticker = st.selectbox(
-            "Select an underlying asset for real-time fundamental profiling:", 
-            available_tickers, 
-            index=0
-        )
-        
-        # Fundamental Matrix Key Cards
-        try:
-            asset = yf.Ticker(selected_ticker)
-            asset_info = asset.info
-            mkt_cap = asset_info.get("marketCap", 0)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Market Cap", f"${mkt_cap:,.0f}" if mkt_cap and mkt_cap > 0 else "N/A")
-            col2.metric("Trailing P/E", f"{asset_info.get('trailingPE', 0.0):.2f}" if asset_info.get('trailingPE') else "N/A")
-            col3.metric("Forward P/E", f"{asset_info.get('forwardPE', 0.0):.2f}" if asset_info.get('forwardPE') else "N/A")
-            col4.metric("PEG Ratio", f"{asset_info.get('pegRatio', 0.0):.2f}" if asset_info.get('pegRatio') else "N/A")
-            
-            st.markdown(f"**Business Core:** {asset_info.get('longBusinessSummary', 'No profile cataloged.')}")
-        except:
-            st.caption("Valuation card matrix connection lag. Institutional logs streaming below.")
-
-        st.markdown("---")
-        
-        # Live Institutional Block-Trade Stream
-        st.markdown("#### 🐋 Live Institutional Block-Trade Stream")
-        with st.spinner(f"Scanning volume networks for {selected_ticker}..."):
-            df_blocks, buy_vol, sell_vol = fetch_whale_block_trades(selected_ticker)
-            
-            if not df_blocks.empty:
-                net_flow = buy_vol - sell_vol
-                flow_color = "green" if net_flow >= 0 else "red"
-                st.markdown(
-                    f"**Net Institutional Block Flow (5D Window):** "
-                    f"<span style='color:{flow_color}; font-size:18px; font-weight:bold;'>${net_flow:,.2f}</span>", 
-                    unsafe_allow_html=True
-                )
-                st.dataframe(df_blocks, hide_index=True, width="stretch")
-            else:
-                st.info(f"No anomalous institutional block trades flagged over the past 5 sessions.")
-
-        st.markdown("---")
-        
-        # Sector Infrastructure Board
-        st.markdown("#### 📊 Sector Infrastructure Broadboard")
-        if not df_metrics.empty:
-            infra_records = []
-            for _, row in df_metrics.iterrows():
-                try:
-                    t_ticker = yf.Ticker(row["Ticker"])
-                    try:
-                        t_info = t_ticker.info if t_ticker.info and len(t_ticker.info) > 5 else {}
-                    except:
-                        t_info = {}
-                    
-                    fifty_two_w_high = t_info.get('fiftyTwoWeekHigh', row["Raw_Price"] * 1.2) or (row["Raw_Price"] * 1.2)
-                    pct_off_high = ((fifty_two_w_high - row["Raw_Price"]) / fifty_two_w_high) * 100
-                    if pct_off_high < 0: pct_off_high = 0.0
-
-                    infra_records.append({
-                        "Ticker": row["Ticker"],
-                        "Price": row["Price"],
-                        "Forward P/E": round(t_info.get("forwardPE", 0.0), 2) if t_info.get("forwardPE") else "N/A",
-                        "Beta (Risk Factor)": round(t_info.get("beta", 1.0), 2) if t_info.get("beta") else 1.0,
-                        "14D RSI": row["Raw_RSI"],
-                        "Discount from 52W High %": round(pct_off_high, 2)
-                    })
-                except:
-                    continue
-                    
-            if infra_records:
-                df_infra = pd.DataFrame(infra_records)
-                
-                fig_infra = px.bar(
-                    df_infra,
-                    x="Ticker",
-                    y="Discount from 52W High %",
-                    color="14D RSI",
-                    text_auto=".1f",
-                    color_continuous_scale="rdylbu",
-                    labels={"Discount from 52W High %": "Pullback Depth (% Off Peak)", "14D RSI": "Momentum (RSI)"}
-                )
-                fig_infra.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=10, r=10, t=20, b=10),
-                    height=300,
-                    autosize=True
-                )
-                st.plotly_chart(fig_infra, config={'displayModeBar': False})
-                st.dataframe(df_infra, hide_index=True, width="stretch")
+    st.info("Watchlist is currently empty. Add tickers above to activate the radar.")
