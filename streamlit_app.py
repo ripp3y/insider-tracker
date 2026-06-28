@@ -1,7 +1,6 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import random
 
 # --- 1. INITIALIZATION & CLOUD/URL SYNC ---
 query_params = st.query_params
@@ -47,10 +46,10 @@ def scan_institutional_matrix(tickers):
             price_breakout = current_price >= twenty_day_high
             volume_surge = current_volume >= (avg_volume * 1.5)
             
-            # Whale Metric: Identify unusual institutional accumulation multiples
-            whale_multiplier = current_volume / avg_volume
+            # Whale Metric
+            whale_multiplier = float(current_volume / avg_volume)
             
-            # Structural Whale Alerts (Simulating institutional tracking loops)
+            # Structural Whale Alerts
             if whale_multiplier > 2.0 or (price_breakout and volume_surge):
                 inst_action = "🐋 WHALE BLOCK BUY"
             elif volume_surge:
@@ -64,7 +63,7 @@ def scan_institutional_matrix(tickers):
                 "Ticker": ticker,
                 "Price": f"${current_price:.2f}",
                 "20D High": f"${twenty_day_high:.2f}",
-                "Whale Vol Ratio": f"{whale_multiplier:.2fx}",
+                "Whale Vol Ratio": f"{whale_multiplier:.2f}x",  # FIXED: Moved the 'x' outside the format specifier
                 "Institutional Flow": inst_action
             })
     except Exception as e:
@@ -96,7 +95,6 @@ if st.session_state.global_watchlist:
         df_results = scan_institutional_matrix(st.session_state.global_watchlist)
         
     if not df_results.empty:
-        # Dynamic style highlight dictionary mapping
         def highlight_whale_flows(val):
             if "WHALE" in val: return "background-color: #0f2d4a; color: #99ccff; font-weight: bold;"
             if "Squeeze" in val: return "background-color: #3a3a1a; color: #ffff99;"
@@ -104,8 +102,6 @@ if st.session_state.global_watchlist:
             return ""
             
         styled_df = df_results.style.map(highlight_whale_flows, subset=["Institutional Flow"])
-        
-        # Cleaned deprecation warning here by shifting to width="stretch"
         st.dataframe(styled_df, width="stretch", hide_index=True)
     
     # Grid item controls
