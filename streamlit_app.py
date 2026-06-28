@@ -69,13 +69,14 @@ def fetch_terminal_data(tickers):
                 squeeze_risk = "🛡️ Normal Exposure"
                 
             # Aschenbrenner AI Infra Vector
+                        # Aschenbrenner AI Infra Vector
             if ticker in leopold_longs:
                 leopold_signal = "⚡ Long Data Center/Infra"
             elif ticker in leopold_shorts:
                 leopold_signal = "🚨 Heavy Notional Put Hedge"
             else:
-                leopold_signal = "娱乐 Unallocated"
-                
+                leopold_signal = "⚪ Unallocated"  # FIXED: Replaced '娱乐' with a clean emoji
+
             # Political / Executive Disclosures Vector
             ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
             if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
