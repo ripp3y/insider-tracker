@@ -10,7 +10,6 @@ if "global_watchlist" not in st.session_state:
     if "symbols" in query_params:
         st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
     else:
-        # Synced masterclass defaults
         st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
 
 def update_cloud_storage():
@@ -21,9 +20,9 @@ def update_cloud_storage():
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
 
-# --- 2. MULTI-VECTOR RADAR CONTROLLER ---
+# --- 2. MULTI-VECTOR RADAR ENGINE WITH BREAKOUT TRACKER ---
 def fetch_terminal_data(tickers):
-    """Downloads fresh market metrics and parses vectors for all tabs simultaneously."""
+    """Downloads fresh market metrics and parses technical breakout states & portfolio vectors."""
     matrix_data = []
     if not tickers:
         return pd.DataFrame()
@@ -31,7 +30,6 @@ def fetch_terminal_data(tickers):
     try:
         data = yf.download(tickers, period="1mo", group_by="ticker", progress=False)
         
-        # Macro Portfolios Core Profiles
         leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
         leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
         trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
@@ -49,12 +47,22 @@ def fetch_terminal_data(tickers):
             twenty_day_high = historical_df["High"].max()
             avg_volume = historical_df["Volume"].mean()
             
-            # Mathematical calculations for breakouts & surges
+            # Vector 1: Technical Breakout Analytics
             price_breakout = current_price >= twenty_day_high
             volume_surge = current_volume >= (avg_volume * 1.5)
             whale_multiplier = float(current_volume / avg_volume)
             
-            # Core Squeeze & Velocity Calculations
+            # Determine Technical Breakout Status
+            if price_breakout and volume_surge:
+                breakout_signal = "🔥 FULL BREAKOUT"
+            elif price_breakout:
+                breakout_signal = "📈 Price Breakout"
+            elif volume_surge:
+                breakout_signal = "⚡ Volume Surge"
+            else:
+                breakout_signal = "⚪ Consolidated"
+            
+            # Core Squeeze Mechanics
             if whale_multiplier > 2.0 or (price_breakout and volume_surge):
                 inst_action = "🐋 WHALE BLOCK BUY"
                 squeeze_risk = "🔥 CRITICAL SQUEEZE"
@@ -68,16 +76,15 @@ def fetch_terminal_data(tickers):
                 inst_action = "🛡️ Steady Squeeze"
                 squeeze_risk = "🛡️ Normal Exposure"
                 
-            # Aschenbrenner AI Infra Vector
-                        # Aschenbrenner AI Infra Vector
+            # Vector 2: Aschenbrenner AI Infra
             if ticker in leopold_longs:
                 leopold_signal = "⚡ Long Data Center/Infra"
             elif ticker in leopold_shorts:
                 leopold_signal = "🚨 Heavy Notional Put Hedge"
             else:
-                leopold_signal = "⚪ Unallocated"  # FIXED: Replaced '娱乐' with a clean emoji
-
-            # Political / Executive Disclosures Vector
+                leopold_signal = "⚪ Unallocated"  # FIXED: Removed '娱乐' character string from 1782683449994.jpeg
+                
+            # Vector 3: Political / Executive Disclosures
             ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
             if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
                 political_signal = "🏛️ Active Allocation Spike"
@@ -89,6 +96,7 @@ def fetch_terminal_data(tickers):
                 "Price": f"${current_price:.2f}",
                 "Whale Vol Ratio": f"{whale_multiplier:.2f}x",
                 "20D High": f"${twenty_day_high:.2f}",
+                "Breakout Status": breakout_signal,  # Integrated back into core array
                 "Squeeze Risk Profile": squeeze_risk,
                 "Institutional Flow": inst_action,
                 "Situational Awareness (Aschenbrenner)": leopold_signal,
@@ -113,38 +121,44 @@ with st.form(key="add_ticker_form", clear_on_submit=True):
             st.toast(f"Added {new_ticker} to matrix lines!", icon="✅")
             st.rerun()
 
-# --- 4. THE TAB CONTAINER ARRAYS (SHORT SQUEEZE GOES FIRST) ---
+# --- 4. THE TAB CONTAINER ARRAYS ---
 tab1, tab2 = st.tabs(["🔥 Institutional Squeeze Radar", "🏛️ Market Alpha & Flows"])
 
 if st.session_state.global_watchlist:
-    with st.spinner("Analyzing whale order blocks and systemic short exposure..."):
+    with st.spinner("Analyzing data lines..."):
         df_results = fetch_terminal_data(st.session_state.global_watchlist)
 
     if not df_results.empty:
-        # --- TAB 1: THE PRIMARY SHORT SQUEEZE INTERFACE ---
+        # --- TAB 1: SHORT SQUEEZE + TECHNICAL BREAKOUTS ---
         with tab1:
-            st.markdown("### Systemic Short Exposure Matrix")
-            st.caption("Algorithmic filter parsing custom watchlist for acute risk matrices.")
+            st.markdown("### Systemic Short Exposure & Breakout Matrix")
+            st.caption("Algorithmic filter checking chart velocity and acute squeeze risk metrics.")
             
-            # Slice only columns relative to the short squeeze mechanics
-            squeeze_df = df_results[["Ticker", "Price", "20D High", "Whale Vol Ratio", "Squeeze Risk Profile"]]
+            # Slotted in Breakout Status right behind current price
+            squeeze_df = df_results[["Ticker", "Price", "20D High", "Breakout Status", "Whale Vol Ratio", "Squeeze Risk Profile"]]
             
             def style_squeeze_tab(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                # Squeeze Risk
                 styles["Squeeze Risk Profile"] = df["Squeeze Risk Profile"].apply(
                     lambda x: "background-color: #4c1d1d; color: #ff9999; font-weight: bold;" if "CRITICAL" in x 
                     else ("background-color: #3a3a1a; color: #ffff99;" if "High" in x else "")
+                )
+                # Breakout Alerts
+                styles["Breakout Status"] = df["Breakout Status"].apply(
+                    lambda x: "background-color: #4c1d1d; color: #ff9999;" if "FULL" in x 
+                    else ("background-color: #1a3a2a; color: #99ff99;" if "Price" in x 
+                    else ("background-color: #3a3a1a; color: #ffff99;" if "Volume" in x else ""))
                 )
                 return styles
                 
             st.dataframe(squeeze_df.style.apply(style_squeeze_tab, axis=None), width="stretch", hide_index=True)
 
-        # --- TAB 2: ADVANCED CORPORATE & CAPITOL INTEL ---
+        # --- TAB 2: WHALE & EXECUTIVE DISCLOSURES ---
         with tab2:
             st.markdown("### Multi-Vector Accumulation Matrix")
             st.caption("Tracking Macro Supercycle Funds and Executive Mandates.")
             
-            # Slice columns relative to corporate intelligence
             flow_df = df_results[["Ticker", "Price", "Whale Vol Ratio", "Institutional Flow", "Situational Awareness (Aschenbrenner)", "Executive/Capitol Disclosures"]]
             
             def style_flow_tab(df):
