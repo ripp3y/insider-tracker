@@ -22,16 +22,19 @@ def update_cloud_storage():
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
 
-# --- 2. MULTI-VECTOR RADAR & DATA ENGINE ---
-def fetch_terminal_data(tickers):
+# --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
+def fetch_terminal_data(tickers, timeframe="6mo"):
+    """
+    Downloads fresh market metrics using extended structural horizons (3mo or 6mo).
+    """
     matrix_data = []
     historical_charts = {}
     if not tickers:
         return pd.DataFrame(), {}
         
     try:
-        # Download 1 month of daily data for matrix parameters
-        data = yf.download(tickers, period="1mo", group_by="ticker", progress=False)
+        # Pulling lookback period dictated by user timeframe toggle
+        data = yf.download(tickers, period=timeframe, group_by="ticker", progress=False)
         
         leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
         leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
@@ -43,14 +46,14 @@ def fetch_terminal_data(tickers):
             if df.empty or len(df) < 5:
                 continue
                 
-            # Store the cleaned series for interactive charting components
+            # Cache the full extended series for interactive plotting
             historical_charts[ticker] = df[['Close', 'Volume']]
                 
             current_price = df["Close"].iloc[-1]
             current_volume = df["Volume"].iloc[-1]
             
             historical_df = df.iloc[:-1]
-            twenty_day_high = historical_df["High"].max()
+            twenty_day_high = historical_df["High"].tail(20).max() # Keeps lookback breakout strict to recent 20D window
             avg_volume = historical_df["Volume"].mean()
             
             # Vector 1: Technical Breakouts
@@ -126,10 +129,18 @@ with st.form(key="add_ticker_form", clear_on_submit=True):
             st.toast(f"Added {new_ticker} to matrix lines!", icon="✅")
             st.rerun()
 
-# --- 4. DATA COMPILATION & NAVIGATION INTERFACE ---
+# --- 4. TIMEFRAME SELECTOR & DATA COMPILATION ---
 if st.session_state.global_watchlist:
-    with st.spinner("Analyzing data lines..."):
-        df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist)
+    # Macro Horizon Controller added directly to header parameters
+    selected_timeframe = st.radio(
+        "Select Terminal Structural Horizon Lookup:",
+        options=["3mo", "6mo"],
+        index=1, # Defaulting to 6 Months for deeper profile views
+        horizontal=True
+    )
+
+    with st.spinner(f"Analyzing macro metrics over {selected_timeframe} lines..."):
+        df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist, timeframe=selected_timeframe)
 
     if not df_results.empty:
         # --- TAB OVERLAYS ---
@@ -142,12 +153,8 @@ if st.session_state.global_watchlist:
             
             def style_squeeze_tab(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                styles["Squeeze Risk Profile"] = df["Squeeze Risk Profile"].apply(
-                    lambda x: "background-color: #4c1d1d; color: #ff9999; font-weight: bold;" if "CRITICAL" in x else ""
-                )
-                styles["Breakout Status"] = df["Breakout Status"].apply(
-                    lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Breakout" in x else ""
-                )
+                styles["Squeeze Risk Profile"] = df["Squeeze Risk Profile"].apply(lambda x: "background-color: #4c1d1d; color: #ff9999; font-weight: bold;" if "CRITICAL" in x else "")
+                styles["Breakout Status"] = df["Breakout Status"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Breakout" in x else "")
                 return styles
             st.dataframe(squeeze_df.style.apply(style_squeeze_tab, axis=None), width="stretch", hide_index=True)
 
@@ -168,7 +175,6 @@ if st.session_state.global_watchlist:
         st.markdown("---")
         st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
         
-        # Quick toggle to select which ticker in your matrix line to plot
         active_ticker = st.selectbox(
             "Select Target Vector Focus to Plot:", 
             options=st.session_state.global_watchlist,
@@ -179,11 +185,11 @@ if st.session_state.global_watchlist:
         if active_ticker in chart_library:
             ticker_data = chart_library[active_ticker]
             
-            # Main Close Price Movement Chart
-            st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past 30 Days)")
+            # Interactive Trend Vector Chart matching lookback period
+            st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past {selected_timeframe})")
             st.line_chart(ticker_data['Close'], color="#00ffcc")
             
-            # Volume Block Chart
+            # Extended Volume Bar Chart
             st.caption(f"Volume Profile Allocation ({active_ticker})")
             st.bar_chart(ticker_data['Volume'], color="#1f77b4")
 
