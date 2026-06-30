@@ -1,209 +1,107 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
-import hashlib
 
-# --- 1. INITIALIZATION & CLOUD/URL SYNC ---
-query_params = st.query_params
+def render_institution_tracker():
+    st.header("Institutional & Hedge Fund Master Matrix")
+    st.write("Cross-market analysis of asset management giants vs. tactical macro/quant platforms.")
 
-if "global_watchlist" not in st.session_state:
-    if "symbols" in query_params:
-        st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
-    else:
-        st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
+    # 1. Build the dataset
+    data = {
+        "Rank": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "Entity / Fund": [
+            "BlackRock", "Vanguard", "State Street", "Citadel LLC", 
+            "Millennium Management", "Bridgewater Associates", 
+            "Point72 Asset Management", "D. E. Shaw & Co.", 
+            "Renaissance Technologies", "Situational Awareness LP"
+        ],
+        "Classification": [
+            "Asset Manager", "Asset Manager", "Asset Manager", "Mega Hedge Fund", 
+            "Mega Hedge Fund", "Institutional Fund", "Elite Hedge Fund", 
+            "Pioneer Quant Fund", "Pure Quant Fund", "Macro Hedge Fund"
+        ],
+        "Core Strategy": [
+            "Passive Index / Active", "Pure Passive Indexing", "Passive Indexing / Sector", 
+            "Multi-Strategy Platform", "Multi-Manager (Pod Model)", "Systematic Global Macro", 
+            "Fundamental Long/Short", "Quantitative / Systematic", "Mathematical Modeling", 
+            "Deep Thesis Sovereign Macro"
+        ],
+        "Public 13F Footprint (U.S.)": [
+            "~$3.5+ Trillion", "~$4.5+ Trillion", "~$1.1+ Trillion", "~$100B - $150B+", 
+            "~$571 Billion", "~$97 Billion", "~$110B+", "~$60B - $80B", 
+            "~$60B+", "~$13.68 Billion"
+        ],
+        "Total Global AUM": [
+            "~$10.5+ Trillion", "~$9.2+ Trillion", "~$5.6+ Trillion", "~$69 Billion", 
+            "~$89+ Billion", "~$78 Billion", "~$30+ Billion", "~$60+ Billion", 
+            "~$45+ Billion", "~Under $5B"
+        ],
+        "Core AI & Tech Investment Style": [
+            "Structural long exposure; automatically owns 7-10% of every mega-cap chip and infrastructure name.",
+            "Identical to BlackRock—owns massive stakes in NVDA, MSFT, AAPL purely to match index weights.",
+            "Captures highly targeted tech and sector flows via specialized industry baskets.",
+            "Highly tactical. Uses massive options structures to hedge or bet on semi/big-tech volatility.",
+            "Highly fragmented. Hundreds of independent 'pods' trade tech momentum, earnings, and arbitrage.",
+            "Trades tech and semis purely as a macroeconomic proxy for liquidity, inflation, and growth cycles.",
+            "Deep corporate research; aggressive, concentrated fundamental bets on semiconductor cycles and hardware.",
+            "Blends math-driven predictive models with specialized fundamental energy and tech infrastructure teams.",
+            "Completely systematic. Trades short-term mathematical anomalies in chip and hardware stock patterns.",
+            "Hyper-concentrated on AI bottlenecks: nuclear/on-site power, physical hosting, and data storage."
+        ],
+        "Dominant Trading Vehicle": [
+            "Market weight ETFs (iShares).", "Mutual Funds & Low-cost ETFs (VOO, VGT).", 
+            "Sector SPDR ETFs (XLK, XLE).", "Heavy derivative options overlays over equity.", 
+            "High-frequency, high-turnover long/short equity.", "Index tracking ETFs and liquid macro baskets.", 
+            "Long/short individual tech equities via alternative data.", "Proprietary algorithmic execution & relative-value arb.", 
+            "Pure non-fundamental quantitative algorithms.", "Barbell Strategy: Infrastructure longs vs. Semi index puts."
+        ],
+        "Leadership": [
+            "Larry Fink", "Salim Ramji", "Yie-Hsin Hung", "Ken Griffin", 
+            "Izzy Englander", "Bob Prince", "Steve Cohen", "Executive Committee", 
+            "Peter Brown", "Leopold Aschenbrenner"
+        ]
+    }
 
-if "selected_chart_ticker" not in st.session_state:
-    st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
+    df = pd.DataFrame(data)
 
-def update_cloud_storage():
-    if st.session_state.global_watchlist:
-        st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
-    else:
-        if "symbols" in st.query_params:
-            del st.query_params["symbols"]
+    # 2. Sidebar Filters for Interactivity
+    st.sidebar.subheader("Matrix Filters")
+    all_classes = ["All"] + list(df["Classification"].unique())
+    selected_class = st.sidebar.selectbox("Filter by Classification", all_classes)
 
-# --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
-def fetch_terminal_data(tickers, timeframe="6mo"):
-    """
-    Downloads fresh market metrics using extended structural horizons (3mo or 6mo).
-    """
-    matrix_data = []
-    historical_charts = {}
-    if not tickers:
-        return pd.DataFrame(), {}
+    search_query = st.sidebar.text_input("Search Fund or Leader", "")
+
+    # 3. Apply Filters to Dataframe
+    filtered_df = df.copy()
+    if selected_class != "All":
+        filtered_df = filtered_df[filtered_df["Classification"] == selected_class]
         
-    try:
-        # Pulling lookback period dictated by user timeframe toggle
-        data = yf.download(tickers, period=timeframe, group_by="ticker", progress=False)
-        
-        leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
-        leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
-        trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
+    if search_query:
+        filtered_df = filtered_df[
+            filtered_df["Entity / Fund"].str.contains(search_query, case=False) |
+            filtered_df["Leadership"].str.contains(search_query, case=False)
+        ]
 
-        for ticker in tickers:
-            df = data[ticker] if len(tickers) > 1 else data
-            df = df.dropna()
-            if df.empty or len(df) < 5:
-                continue
-                
-            # Cache the full extended series for interactive plotting
-            historical_charts[ticker] = df[['Close', 'Volume']]
-                
-            current_price = df["Close"].iloc[-1]
-            current_volume = df["Volume"].iloc[-1]
-            
-            historical_df = df.iloc[:-1]
-            twenty_day_high = historical_df["High"].tail(20).max() # Keeps lookback breakout strict to recent 20D window
-            avg_volume = historical_df["Volume"].mean()
-            
-            # Vector 1: Technical Breakouts
-            price_breakout = current_price >= twenty_day_high
-            volume_surge = current_volume >= (avg_volume * 1.5)
-            whale_multiplier = float(current_volume / avg_volume)
-            
-            if price_breakout and volume_surge:
-                breakout_signal = "🔥 FULL BREAKOUT"
-            elif price_breakout:
-                breakout_signal = "📈 Price Breakout"
-            elif volume_surge:
-                breakout_signal = "⚡ Volume Surge"
-            else:
-                breakout_signal = "⚪ Consolidated"
-            
-            # Squeeze Core Calculations
-            if whale_multiplier > 2.0 or (price_breakout and volume_surge):
-                inst_action = "🐋 WHALE BLOCK BUY"
-                squeeze_risk = "🔥 CRITICAL SQUEEZE"
-            elif volume_surge:
-                inst_action = "⚡ Institutional Squeeze"
-                squeeze_risk = "💥 High Squeeze Potential"
-            elif price_breakout:
-                inst_action = "📈 Delta Accumulation"
-                squeeze_risk = "📈 Technical Breakout"
-            else:
-                inst_action = "🛡️ Steady Squeeze"
-                squeeze_risk = "🛡️ Normal Exposure"
-                
-            # Vector 2: Aschenbrenner AI Infra
-            if ticker in leopold_longs:
-                leopold_signal = "⚡ Long Data Center/Infra"
-            elif ticker in leopold_shorts:
-                leopold_signal = "🚨 Heavy Notional Put Hedge"
-            else:
-                leopold_signal = "⚪ Unallocated"
-                
-            # Vector 3: Political Disclosures
-            ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
-            if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
-                political_signal = "🏛️ Active Allocation Spike"
-            else:
-                political_signal = "💤 Dormant Portfolio Item"
-                
-            matrix_data.append({
-                "Ticker": ticker,
-                "Price": f"${current_price:.2f}",
-                "Whale Vol Ratio": f"{whale_multiplier:.2f}x",
-                "20D High": f"${twenty_day_high:.2f}",
-                "Breakout Status": breakout_signal,
-                "Squeeze Risk Profile": squeeze_risk,
-                "Institutional Flow": inst_action,
-                "Situational Awareness (Aschenbrenner)": leopold_signal,
-                "Executive/Capitol Disclosures": political_signal
-            })
-    except Exception as e:
-        st.error(f"Data Connection Interrupted: {e}")
-        
-    return pd.DataFrame(matrix_data), historical_charts
-
-# --- 3. INTERFACE HEADER & ADD TICKER LINE ---
-st.markdown("# 🦅 Rebel Terminal AI")
-
-with st.form(key="add_ticker_form", clear_on_submit=True):
-    new_ticker = st.text_input("Deploy Asset to Matrix Ticker Line (e.g., POWL, SMCI):").strip().upper()
-    submit_button = st.form_submit_button(label="⚡ Add to Watchlist")
-    
-    if submit_button and new_ticker:
-        if new_ticker not in st.session_state.global_watchlist:
-            st.session_state.global_watchlist.append(new_ticker)
-            update_cloud_storage()
-            st.toast(f"Added {new_ticker} to matrix lines!", icon="✅")
-            st.rerun()
-
-# --- 4. TIMEFRAME SELECTOR & DATA COMPILATION ---
-if st.session_state.global_watchlist:
-    # Macro Horizon Controller added directly to header parameters
-    selected_timeframe = st.radio(
-        "Select Terminal Structural Horizon Lookup:",
-        options=["3mo", "6mo"],
-        index=1, # Defaulting to 6 Months for deeper profile views
-        horizontal=True
+    # 4. Render Layout
+    st.dataframe(
+        filtered_df, 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={
+            "Rank": st.column_config.NumberColumn("Rank", width="small"),
+            "Entity / Fund": st.column_config.TextColumn("Fund / Firm", help="Official corporate or fund entity name"),
+            "Public 13F Footprint (U.S.)": st.column_config.TextColumn("13F Value", help="Regulatory long equity/options footprint"),
+            "Total Global AUM": st.column_config.TextColumn("Total AUM", help="Total global capital under management")
+        }
     )
 
-    with st.spinner(f"Analyzing macro metrics over {selected_timeframe} lines..."):
-        df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist, timeframe=selected_timeframe)
+    # Context Highlight Block
+    st.info(
+        "**Note on Footprint vs. AUM:** Platform hedge funds (like Millennium) showcase a 13F footprint "
+        "vastly larger than their physical AUM due to heavy regulatory options leverage. Conversely, passive giants "
+        "like Vanguard reflect the broader global retail market flow."
+    )
 
-    if not df_results.empty:
-        # --- TAB OVERLAYS ---
-        tab1, tab2 = st.tabs(["🔥 Institutional Squeeze Radar", "🏛️ Market Alpha & Flows"])
-
-        # --- TAB 1: SQUEEZE & BREAKOUTS ---
-        with tab1:
-            st.markdown("### Systemic Short Exposure & Breakout Matrix")
-            squeeze_df = df_results[["Ticker", "Price", "20D High", "Breakout Status", "Whale Vol Ratio", "Squeeze Risk Profile"]]
-            
-            def style_squeeze_tab(df):
-                styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                styles["Squeeze Risk Profile"] = df["Squeeze Risk Profile"].apply(lambda x: "background-color: #4c1d1d; color: #ff9999; font-weight: bold;" if "CRITICAL" in x else "")
-                styles["Breakout Status"] = df["Breakout Status"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Breakout" in x else "")
-                return styles
-            st.dataframe(squeeze_df.style.apply(style_squeeze_tab, axis=None), width="stretch", hide_index=True)
-
-        # --- TAB 2: ADVANCED ALIAS FLOWS ---
-        with tab2:
-            st.markdown("### Multi-Vector Accumulation Matrix")
-            flow_df = df_results[["Ticker", "Price", "Whale Vol Ratio", "Institutional Flow", "Situational Awareness (Aschenbrenner)", "Executive/Capitol Disclosures"]]
-            
-            def style_flow_tab(df):
-                styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                styles["Institutional Flow"] = df["Institutional Flow"].apply(lambda x: "background-color: #0f2d4a; color: #99ccff; font-weight: bold;" if "WHALE" in x else "")
-                styles["Situational Awareness (Aschenbrenner)"] = df["Situational Awareness (Aschenbrenner)"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Long" in x else ("background-color: #4a1515; color: #ff9999;" if "Put" in x else ""))
-                styles["Executive/Capitol Disclosures"] = df["Executive/Capitol Disclosures"].apply(lambda x: "background-color: #3d1b40; color: #f2a2f5; font-weight: bold;" if "Active" in x else "")
-                return styles
-            st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), width="stretch", hide_index=True)
-
-        # --- 5. THE VISUAL CHART MATRIX OVERLAY ---
-        st.markdown("---")
-        st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
-        
-        active_ticker = st.selectbox(
-            "Select Target Vector Focus to Plot:", 
-            options=st.session_state.global_watchlist,
-            index=st.session_state.global_watchlist.index(st.session_state.selected_chart_ticker) if st.session_state.selected_chart_ticker in st.session_state.global_watchlist else 0
-        )
-        st.session_state.selected_chart_ticker = active_ticker
-
-        if active_ticker in chart_library:
-            ticker_data = chart_library[active_ticker]
-            
-            # Interactive Trend Vector Chart matching lookback period
-            st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past {selected_timeframe})")
-            st.line_chart(ticker_data['Close'], color="#00ffcc")
-            
-            # Extended Volume Bar Chart
-            st.caption(f"Volume Profile Allocation ({active_ticker})")
-            st.bar_chart(ticker_data['Volume'], color="#1f77b4")
-
-    # --- 6. COMPONENT CONTROL SECTOR ---
-    st.write("### 🪓 Matrix Component Control")
-    cols = st.columns(min(len(st.session_state.global_watchlist), 4))
-    for idx, ticker in enumerate(st.session_state.global_watchlist):
-        col_idx = idx % 4
-        with cols[col_idx]:
-            if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
-                st.session_state.global_watchlist.remove(ticker)
-                if st.session_state.selected_chart_ticker == ticker:
-                    st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
-                update_cloud_storage()
-                st.rerun()
-else:
-    st.info("Watchlist lines currently unallocated. Drop assets above.")
+if __name__ == "__main__":
+    # If running standalone for testing
+    st.set_page_config(layout="wide")
+    render_institution_tracker()
