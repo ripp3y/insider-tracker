@@ -215,6 +215,31 @@ if st.session_state.global_watchlist:
             
             st.caption(f"Volume Profile Allocation ({active_ticker})")
             st.bar_chart(ticker_data['Volume'], color="#1f77b4")
+            # --- Drop this directly inside Section 5 underneath st.line_chart(ticker_data['Close']) ---
+if active_ticker in chart_library:
+    df_atr = chart_library[active_ticker].copy()
+    
+    # Calculate True Range components
+    df_atr['H-L'] = df_atr['Close'] # Approximating using close variance for clean lines
+    # Using a rolling 14-period standard deviation as a proxy for volatility/ATR
+    df_atr['Volatility_Band'] = df_atr['Close'].rolling(window=14).std() * 2.5
+    
+    # Generate the floor line
+    df_atr['Trailing_Stop_Floor'] = df_atr['Close'] - df_atr['Volatility_Band']
+    
+    # Calculate the current recommended hard percent stop based on fresh variance
+    current_close = df_atr['Close'].iloc[-1]
+    current_floor = df_atr['Trailing_Stop_Floor'].iloc[-1]
+    
+    if not pd.isna(current_floor):
+        recommended_pct = ((current_close - current_floor) / current_close) * 100
+        st.metric(
+            label=f"🛡️ Dynamic Volatility Trailing Stop for {active_ticker}", 
+            value=f"${current_floor:.2f}", 
+            delta=f"Set Stop at -{recommended_pct:.1f}% from peak"
+        )
+        st.caption("This floor automatically widens during high-velocity institutional squeezes to prevent premature shakeouts.")
+
 
     # --- 6. COMPONENT CONTROL SECTOR ---
     st.write("### 🪓 Matrix Component Control")
