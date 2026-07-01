@@ -24,19 +24,30 @@ def update_cloud_storage():
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
 
-# --- PUBLIC DATA PRESHIFT SCRAPER ---
+# --- PUBLIC DATA DUAL-MODE SCANNER ---
 def fetch_preshift_movers(tickers_list=None):
     """
-    Scrapes live pre-market gainers directly from public financial tracking lines.
-    Bypasses the need for any API keys, accounts, or authentication.
+    Scrapes live momentum gainers directly from public financial tracking lines.
+    Pivots from pre-market feeds to live day-gainers if the early session is empty.
     """
     try:
+        # Step 1: Scan early pre-market tracking lines first
         url = "https://finance.yahoo.com/markets/stocks/pre-market-gainers/"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         html = urllib.request.urlopen(req).read()
         
         soup = BeautifulSoup(html, 'html.parser')
         rows = soup.find_all('tr', class_='markets-table-row')
+        mode_label = "Pre-Market"
+        
+        # Step 2: Fallback to active regular session lines if pre-market is empty/closed
+        if not rows:
+            url = "https://finance.yahoo.com/markets/stocks/gainers/"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urllib.request.urlopen(req).read()
+            soup = BeautifulSoup(html, 'html.parser')
+            rows = soup.find_all('tr', class_='markets-table-row')
+            mode_label = "Intraday"
         
         movers = []
         for row in rows:
@@ -54,21 +65,23 @@ def fetch_preshift_movers(tickers_list=None):
                 else:
                     volume = int(volume_text.replace(',', ''))
 
-                # Filter strictly for stocks under 5 bucks with positive momentum
-                if 1.00 <= price <= 5.00 and gap_pct >= 2.0:
+                # Dynamic filter: $1 to $5 for pre-market microcaps, up to $10 for intraday runners
+                max_price = 5.00 if mode_label == "Pre-Market" else 10.00
+                if 1.00 <= price <= max_price and gap_pct >= 2.0:
                     movers.append({
                         "Ticker": symbol,
                         "Price": f"${price:.2f}",
                         "Prev Close": f"${(price / (1 + (gap_pct/100))):.2f}",
-                        "Gap %": gap_pct,
-                        "Daily Volume": volume
+                        "Gap/Change %": gap_pct,
+                        "Volume Lines": volume,
+                        "Session Source": mode_label
                     })
             except:
                 continue 
                 
         df = pd.DataFrame(movers)
         if not df.empty:
-            return df.sort_values(by="Gap %", ascending=False).reset_index(drop=True)
+            return df.sort_values(by="Gap/Change %", ascending=False).reset_index(drop=True)
         return pd.DataFrame()
         
     except Exception as e:
@@ -242,29 +255,32 @@ if st.session_state.global_watchlist:
                 return styles
             st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), use_container_width=True, hide_index=True)
 
-        # --- TAB 3: NEW PRESHIFT MOMENTUM MONITOR ---
+        # --- TAB 3: DUAL-FEED PRESHIFT & ACTIVE RADAR ---
         with tab3:
-            st.markdown("### Preshift Small-Cap Velocity Radar ($1.00 - $5.00)")
-            st.caption("Scans active pre-market targets for rapid upward structural gaps via live snapshot streams.")
+            st.markdown("### Momentum Velocity Radar ($1.00 - $10.00)")
+            st.caption("Pulls live micro-cap runners. Automatically switches feeds based on market session state.")
             
             col_a, col_b = st.columns([3, 1])
             with col_a:
-                st.info("💡 Robinhood Options Note: Verify that targeted small-caps possess tight option bid-ask spreads before deployment to mitigate liquidity friction.")
+                st.info("💡 Options Protocol: Double-check that options chains for target small-caps possess narrow bid-ask spreads to minimize premium friction.")
             with col_b:
-                refresh_preshift = st.button("🔄 Scan Preshift", use_container_width=True)
+                refresh_preshift = st.button("🔄 Scan Market Lines", use_container_width=True)
                 
             if refresh_preshift or 'preshift_cache' not in st.session_state:
-                with st.spinner("Streaming public snapshots..."):
+                with st.spinner("Processing structural gainers list..."):
                     st.session_state.preshift_cache = fetch_preshift_movers()
                     
             if not st.session_state.preshift_cache.empty:
+                current_mode = st.session_state.preshift_cache["Session Source"].iloc[0]
+                st.success(f"Displaying Live **{current_mode}** Allocation Stream")
+                
                 st.dataframe(
                     st.session_state.preshift_cache,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Gap %": st.column_config.NumberColumn(format="+%.2f%%"),
-                        "Daily Volume": st.column_config.NumberColumn(format="%d")
+                        "Gap/Change %": st.column_config.NumberColumn(format="+%.2f%%"),
+                        "Volume Lines": st.column_config.NumberColumn(format="%d")
                     }
                 )
                 
@@ -280,7 +296,7 @@ if st.session_state.global_watchlist:
                     st.success(f"Piped {selected_mover} into central vector pipeline! View charts below.")
                     st.rerun()
             else:
-                st.warning("No tracked tickers currently match the $1.00 - $5.00 baseline parameter with active upward pre-market gaps.")
+                st.warning("No active small-cap targets currently matching structural momentum baseline parameters.")
 
         # --- 5. THE VISUAL CHART MATRIX OVERLAY ---
         st.markdown("---")
