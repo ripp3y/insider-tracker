@@ -79,7 +79,7 @@ def fetch_preshift_movers():
                 else:
                     volume = int(volume_text.replace(',', ''))
 
-                max_price = 5.00 if mode_label == "Pre-Market" else 10.00
+                max_price = 500.00 if mode_label == "Pre-Market" else 10.00
                 if 1.00 <= price <= max_price and gap_pct >= 2.0:
                     movers.append({
                         "Ticker": symbol,
