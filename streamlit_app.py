@@ -24,41 +24,64 @@ def update_cloud_storage():
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
 
-# --- ALPACA PRESHIFT DATA ENGINE ---
-# Replace with your actual Alpaca live keys or pass through st.secrets
-ALPACA_API_KEY = "YOUR_ALPACA_API_KEY"
-ALPACA_SECRET_KEY = "YOUR_ALPACA_SECRET_KEY"
+#import urllib.request
+from bs4 import BeautifulSoup
 
-def fetch_preshift_movers(tickers_list):
+def fetch_preshift_movers(tickers_list=None):
     """
-    Fetches raw market snapshots from Alpaca to screen for pre-market volume 
-    and gaps exclusively for micro/small cap tickers between $1.00 and $5.00.
+    Scrapes live pre-market gainers directly from public financial tracking lines.
+    Bypasses the need for any API keys, accounts, or authentication.
     """
     try:
-        client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
-        request_params = StockSnapshotRequest(symbol_or_symbols=tickers_list)
-        snapshots = client.get_stock_snapshot(request_params)
+        # Pulling from Yahoo Finance's live pre-market gainers feed
+        url = "https://finance.yahoo.com/markets/stocks/pre-market-gainers/"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        html = urllib.request.urlopen(req).read()
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Look for the data table rows on the page
+        rows = soup.find_all('tr', class_='markets-table-row')
         
         movers = []
-        for symbol, snap in snapshots.items():
-            if not snap.minute_bar or not snap.previous_daily_bar:
-                continue
+        for row in rows:
+            try:
+                # Extract columns: Ticker, Price, Change %
+                symbol = row.find('span', class_='symbol').text.strip()
+                price = float(row.find('td', {'data-field': 'regularMarketPrice'}).text.replace('$', '').replace(',', ''))
+                gap_text = row.find('td', {'data-field': 'regularMarketChangePercent'}).text
+                gap_pct = float(gap_text.replace('+', '').replace('%', '').replace(',', ''))
+                volume_text = row.find('td', {'data-field': 'regularMarketVolume'}).text
                 
-            current_price = snap.minute_bar.close
-            prev_close = snap.previous_daily_bar.close
-            
-            # Filter specifically for stocks under 5 bucks
-            if 1.00 <= current_price <= 5.00:
-                gap_pct = ((current_price - prev_close) / prev_close) * 100
-                # Filter for upward momentum gaps of at least 2%
-                if gap_pct >= 2.0:
+                # Convert volume shorthand (like 1.2M or 500K) to raw numbers
+                if 'M' in volume_text:
+                    volume = int(float(volume_text.replace('M', '')) * 1_000_000)
+                elif 'K' in volume_text:
+                    volume = int(float(volume_text.replace('K', '')) * 1_000)
+                else:
+                    volume = int(volume_text.replace(',', ''))
+
+                # Filter strictly for stocks under 5 bucks with positive momentum
+                if 1.00 <= price <= 5.00 and gap_pct >= 2.0:
                     movers.append({
                         "Ticker": symbol,
-                        "Price": f"${current_price:.2f}",
-                        "Prev Close": f"${prev_close:.2f}",
+                        "Price": f"${price:.2f}",
+                        "Prev Close": f"${(price / (1 + (gap_pct/100))):.2f}",
                         "Gap %": gap_pct,
-                        "Daily Volume": snap.daily_bar.volume if snap.daily_bar else 0
+                        "Daily Volume": volume
                     })
+            except:
+                continue # Skip rows that don't match the format cleanly
+                
+        df = pd.DataFrame(movers)
+        if not df.empty:
+            return df.sort_values(by="Gap %", ascending=False).reset_index(drop=True)
+        return pd.DataFrame()
+        
+    except Exception as e:
+        st.error(f"Public Data Stream Interrupted: {e}")
+        return pd.DataFrame()
+
                     
         df = pd.DataFrame(movers)
         if not df.empty:
