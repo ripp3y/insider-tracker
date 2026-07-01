@@ -2,8 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import hashlib
-from alpaca.data.historical.stock import StockHistoricalDataClient
-from alpaca.data.requests import StockSnapshotRequest
+import urllib.request
+from bs4 import BeautifulSoup
 
 # --- 1. INITIALIZATION & CLOUD/URL SYNC ---
 query_params = st.query_params
@@ -24,36 +24,29 @@ def update_cloud_storage():
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
 
-#import urllib.request
-from bs4 import BeautifulSoup
-
+# --- PUBLIC DATA PRESHIFT SCRAPER ---
 def fetch_preshift_movers(tickers_list=None):
     """
     Scrapes live pre-market gainers directly from public financial tracking lines.
     Bypasses the need for any API keys, accounts, or authentication.
     """
     try:
-        # Pulling from Yahoo Finance's live pre-market gainers feed
         url = "https://finance.yahoo.com/markets/stocks/pre-market-gainers/"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         html = urllib.request.urlopen(req).read()
         
         soup = BeautifulSoup(html, 'html.parser')
-        
-        # Look for the data table rows on the page
         rows = soup.find_all('tr', class_='markets-table-row')
         
         movers = []
         for row in rows:
             try:
-                # Extract columns: Ticker, Price, Change %
                 symbol = row.find('span', class_='symbol').text.strip()
                 price = float(row.find('td', {'data-field': 'regularMarketPrice'}).text.replace('$', '').replace(',', ''))
                 gap_text = row.find('td', {'data-field': 'regularMarketChangePercent'}).text
                 gap_pct = float(gap_text.replace('+', '').replace('%', '').replace(',', ''))
                 volume_text = row.find('td', {'data-field': 'regularMarketVolume'}).text
                 
-                # Convert volume shorthand (like 1.2M or 500K) to raw numbers
                 if 'M' in volume_text:
                     volume = int(float(volume_text.replace('M', '')) * 1_000_000)
                 elif 'K' in volume_text:
@@ -71,7 +64,7 @@ def fetch_preshift_movers(tickers_list=None):
                         "Daily Volume": volume
                     })
             except:
-                continue # Skip rows that don't match the format cleanly
+                continue 
                 
         df = pd.DataFrame(movers)
         if not df.empty:
@@ -80,15 +73,6 @@ def fetch_preshift_movers(tickers_list=None):
         
     except Exception as e:
         st.error(f"Public Data Stream Interrupted: {e}")
-        return pd.DataFrame()
-
-                    
-        df = pd.DataFrame(movers)
-        if not df.empty:
-            return df.sort_values(by="Gap %", ascending=False).reset_index(drop=True)
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Alpaca API Connection Interrupted: {e}")
         return pd.DataFrame()
 
 # --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
@@ -110,7 +94,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
         leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
         trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
         
-        # Hedge Fund Clusters (Multi-Strategy, Pods, and Tiger Cubs)
         hf_pod_favorites = ["NVDA", "MSFT", "PLTR", "AMZN", "META"] 
         hf_activist_targets = ["WOLF", "CORZ", "APLD"]
 
@@ -134,7 +117,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
             twenty_day_high = float(historical_df["High"].tail(20).max())
             avg_volume = float(historical_df["Volume"].mean())
             
-            # Vector 1: Technical Breakouts
             price_breakout = current_price >= twenty_day_high
             volume_surge = current_volume >= (avg_volume * 1.5)
             whale_multiplier = current_volume / avg_volume if avg_volume > 0 else 0
@@ -148,7 +130,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
             else:
                 breakout_signal = "⚪ Consolidated"
             
-            # Squeeze Core Calculations
             if whale_multiplier > 2.0 or (price_breakout and volume_surge):
                 inst_action = "🐋 WHALE BLOCK BUY"
                 squeeze_risk = "🔥 CRITICAL SQUEEZE"
@@ -162,7 +143,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
                 inst_action = "🛡️ Steady Squeeze"
                 squeeze_risk = "🛡️ Normal Exposure"
                 
-            # Vector 2: Aschenbrenner AI Infra
             if ticker in leopold_longs:
                 leopold_signal = "⚡ Long Data Center/Infra"
             elif ticker in leopold_shorts:
@@ -170,7 +150,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
             else:
                 leopold_signal = "⚪ Unallocated"
                 
-            # Vector 3: NEW Hedge Fund Positioning Radar
             if ticker in hf_activist_targets or whale_multiplier > 2.2:
                 hf_signal = "🎯 Activist Target / Squeeze Lock"
             elif ticker in hf_pod_favorites and price_breakout:
@@ -180,7 +159,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
             else:
                 hf_signal = "⚖️ Neutral Multi-Strategy Book"
                 
-            # Vector 4: Political Disclosures
             ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
             if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
                 political_signal = "🏛️ Active Allocation Spike"
@@ -232,7 +210,6 @@ if st.session_state.global_watchlist:
 
     if not df_results.empty:
         # --- TAB OVERLAYS ---
-        # Added "⚡ Preshift Momentum" into your primary tab controller
         tab1, tab2, tab3 = st.tabs([
             "🔥 Institutional Squeeze Radar", 
             "🏛️ Market Alpha & Flows", 
@@ -265,13 +242,10 @@ if st.session_state.global_watchlist:
                 return styles
             st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), use_container_width=True, hide_index=True)
 
-        # --- TAB 3: NEW ALPACA PRESHIFT MOMENTUM MONITOR ---
+        # --- TAB 3: NEW PRESHIFT MOMENTUM MONITOR ---
         with tab3:
             st.markdown("### Preshift Small-Cap Velocity Radar ($1.00 - $5.00)")
-            st.caption("Scans active pre-market targets for rapid upward structural gaps via live Alpaca snapshot streams.")
-            
-            # Watchlist configuration for options targets under $5
-            preshift_watchlist = ["ANY", "CEI", "UXIN", "XSPA", "SNDL", "GNUS", "ZOM", "PROG", "BBIG", "TYDE", "SENS", "PHUN", "SND", "NXTD"]
+            st.caption("Scans active pre-market targets for rapid upward structural gaps via live snapshot streams.")
             
             col_a, col_b = st.columns([3, 1])
             with col_a:
@@ -280,8 +254,8 @@ if st.session_state.global_watchlist:
                 refresh_preshift = st.button("🔄 Scan Preshift", use_container_width=True)
                 
             if refresh_preshift or 'preshift_cache' not in st.session_state:
-                with st.spinner("Streaming institutional snapshots from Alpaca..."):
-                    st.session_state.preshift_cache = fetch_preshift_movers(preshift_watchlist)
+                with st.spinner("Streaming public snapshots..."):
+                    st.session_state.preshift_cache = fetch_preshift_movers()
                     
             if not st.session_state.preshift_cache.empty:
                 st.dataframe(
@@ -294,7 +268,6 @@ if st.session_state.global_watchlist:
                     }
                 )
                 
-                # Directly pipes target back into your central visual engine
                 selected_mover = st.selectbox(
                     "🎯 Transfer Target Mover to Main Visualization Vectors:",
                     options=st.session_state.preshift_cache["Ticker"].tolist()
@@ -330,7 +303,6 @@ if st.session_state.global_watchlist:
             st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past {selected_timeframe})")
             st.line_chart(ticker_data['Close'], color="#00ffcc")
             
-            # --- Dynamic ATR Stop Logic Integration ---
             df_atr = chart_library[active_ticker].copy()
             df_atr['H-L'] = df_atr['Close'] 
             df_atr['Volatility_Band'] = df_atr['Close'].rolling(window=14).std() * 2.5
