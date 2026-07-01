@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import hashlib
+from alpaca.data.historical.stock import StockHistoricalDataClient
+from alpaca.data.requests import StockSnapshotRequest
 
 # --- 1. INITIALIZATION & CLOUD/URL SYNC ---
 query_params = st.query_params
@@ -21,6 +23,50 @@ def update_cloud_storage():
     else:
         if "symbols" in st.query_params:
             del st.query_params["symbols"]
+
+# --- ALPACA PRESHIFT DATA ENGINE ---
+# Replace with your actual Alpaca live keys or pass through st.secrets
+ALPACA_API_KEY = "YOUR_ALPACA_API_KEY"
+ALPACA_SECRET_KEY = "YOUR_ALPACA_SECRET_KEY"
+
+def fetch_preshift_movers(tickers_list):
+    """
+    Fetches raw market snapshots from Alpaca to screen for pre-market volume 
+    and gaps exclusively for micro/small cap tickers between $1.00 and $5.00.
+    """
+    try:
+        client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+        request_params = StockSnapshotRequest(symbol_or_symbols=tickers_list)
+        snapshots = client.get_stock_snapshot(request_params)
+        
+        movers = []
+        for symbol, snap in snapshots.items():
+            if not snap.minute_bar or not snap.previous_daily_bar:
+                continue
+                
+            current_price = snap.minute_bar.close
+            prev_close = snap.previous_daily_bar.close
+            
+            # Filter specifically for stocks under 5 bucks
+            if 1.00 <= current_price <= 5.00:
+                gap_pct = ((current_price - prev_close) / prev_close) * 100
+                # Filter for upward momentum gaps of at least 2%
+                if gap_pct >= 2.0:
+                    movers.append({
+                        "Ticker": symbol,
+                        "Price": f"${current_price:.2f}",
+                        "Prev Close": f"${prev_close:.2f}",
+                        "Gap %": gap_pct,
+                        "Daily Volume": snap.daily_bar.volume if snap.daily_bar else 0
+                    })
+                    
+        df = pd.DataFrame(movers)
+        if not df.empty:
+            return df.sort_values(by="Gap %", ascending=False).reset_index(drop=True)
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Alpaca API Connection Interrupted: {e}")
+        return pd.DataFrame()
 
 # --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
 def fetch_terminal_data(tickers, timeframe="6mo"):
@@ -102,7 +148,6 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
                 leopold_signal = "⚪ Unallocated"
                 
             # Vector 3: NEW Hedge Fund Positioning Radar
-            # Dynamically checks lookbacks and historical structural shorting behavior
             if ticker in hf_activist_targets or whale_multiplier > 2.2:
                 hf_signal = "🎯 Activist Target / Squeeze Lock"
             elif ticker in hf_pod_favorites and price_breakout:
@@ -164,7 +209,12 @@ if st.session_state.global_watchlist:
 
     if not df_results.empty:
         # --- TAB OVERLAYS ---
-        tab1, tab2 = st.tabs(["🔥 Institutional Squeeze Radar", "🏛️ Market Alpha & Flows"])
+        # Added "⚡ Preshift Momentum" into your primary tab controller
+        tab1, tab2, tab3 = st.tabs([
+            "🔥 Institutional Squeeze Radar", 
+            "🏛️ Market Alpha & Flows", 
+            "⚡ Preshift Momentum"
+        ])
 
         # --- TAB 1: SQUEEZE & BREAKOUTS ---
         with tab1:
@@ -192,6 +242,50 @@ if st.session_state.global_watchlist:
                 return styles
             st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), use_container_width=True, hide_index=True)
 
+        # --- TAB 3: NEW ALPACA PRESHIFT MOMENTUM MONITOR ---
+        with tab3:
+            st.markdown("### Preshift Small-Cap Velocity Radar ($1.00 - $5.00)")
+            st.caption("Scans active pre-market targets for rapid upward structural gaps via live Alpaca snapshot streams.")
+            
+            # Watchlist configuration for options targets under $5
+            preshift_watchlist = ["ANY", "CEI", "UXIN", "XSPA", "SNDL", "GNUS", "ZOM", "PROG", "BBIG", "TYDE", "SENS", "PHUN", "SND", "NXTD"]
+            
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                st.info("💡 Robinhood Options Note: Verify that targeted small-caps possess tight option bid-ask spreads before deployment to mitigate liquidity friction.")
+            with col_b:
+                refresh_preshift = st.button("🔄 Scan Preshift", use_container_width=True)
+                
+            if refresh_preshift or 'preshift_cache' not in st.session_state:
+                with st.spinner("Streaming institutional snapshots from Alpaca..."):
+                    st.session_state.preshift_cache = fetch_preshift_movers(preshift_watchlist)
+                    
+            if not st.session_state.preshift_cache.empty:
+                st.dataframe(
+                    st.session_state.preshift_cache,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Gap %": st.column_config.NumberColumn(format="+%.2f%%"),
+                        "Daily Volume": st.column_config.NumberColumn(format="%d")
+                    }
+                )
+                
+                # Directly pipes target back into your central visual engine
+                selected_mover = st.selectbox(
+                    "🎯 Transfer Target Mover to Main Visualization Vectors:",
+                    options=st.session_state.preshift_cache["Ticker"].tolist()
+                )
+                if st.button("Analyze Selected Preshift Target"):
+                    if selected_mover not in st.session_state.global_watchlist:
+                        st.session_state.global_watchlist.append(selected_mover)
+                        update_cloud_storage()
+                    st.session_state.selected_chart_ticker = selected_mover
+                    st.success(f"Piped {selected_mover} into central vector pipeline! View charts below.")
+                    st.rerun()
+            else:
+                st.warning("No tracked tickers currently match the $1.00 - $5.00 baseline parameter with active upward pre-market gaps.")
+
         # --- 5. THE VISUAL CHART MATRIX OVERLAY ---
         st.markdown("---")
         st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
@@ -213,45 +307,39 @@ if st.session_state.global_watchlist:
             st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past {selected_timeframe})")
             st.line_chart(ticker_data['Close'], color="#00ffcc")
             
+            # --- Dynamic ATR Stop Logic Integration ---
+            df_atr = chart_library[active_ticker].copy()
+            df_atr['H-L'] = df_atr['Close'] 
+            df_atr['Volatility_Band'] = df_atr['Close'].rolling(window=14).std() * 2.5
+            df_atr['Trailing_Stop_Floor'] = df_atr['Close'] - df_atr['Volatility_Band']
+            
+            current_close = df_atr['Close'].iloc[-1]
+            current_floor = df_atr['Trailing_Stop_Floor'].iloc[-1]
+            
+            if not pd.isna(current_floor):
+                recommended_pct = ((current_close - current_floor) / current_close) * 100
+                st.metric(
+                    label=f"🛡️ Dynamic Volatility Trailing Stop for {active_ticker}", 
+                    value=f"${current_floor:.2f}", 
+                    delta=f"Set Stop at -{recommended_pct:.1f}% from peak"
+                )
+                st.caption("This floor automatically widens during high-velocity institutional squeezes to prevent premature shakeouts.")
+
             st.caption(f"Volume Profile Allocation ({active_ticker})")
             st.bar_chart(ticker_data['Volume'], color="#1f77b4")
-            # --- Drop this directly inside Section 5 underneath st.line_chart(ticker_data['Close']) ---
-if active_ticker in chart_library:
-    df_atr = chart_library[active_ticker].copy()
-    
-    # Calculate True Range components
-    df_atr['H-L'] = df_atr['Close'] # Approximating using close variance for clean lines
-    # Using a rolling 14-period standard deviation as a proxy for volatility/ATR
-    df_atr['Volatility_Band'] = df_atr['Close'].rolling(window=14).std() * 2.5
-    
-    # Generate the floor line
-    df_atr['Trailing_Stop_Floor'] = df_atr['Close'] - df_atr['Volatility_Band']
-    
-    # Calculate the current recommended hard percent stop based on fresh variance
-    current_close = df_atr['Close'].iloc[-1]
-    current_floor = df_atr['Trailing_Stop_Floor'].iloc[-1]
-    
-    if not pd.isna(current_floor):
-        recommended_pct = ((current_close - current_floor) / current_close) * 100
-        st.metric(
-            label=f"🛡️ Dynamic Volatility Trailing Stop for {active_ticker}", 
-            value=f"${current_floor:.2f}", 
-            delta=f"Set Stop at -{recommended_pct:.1f}% from peak"
-        )
-        st.caption("This floor automatically widens during high-velocity institutional squeezes to prevent premature shakeouts.")
 
-
-    # --- 6. COMPONENT CONTROL SECTOR ---
-    st.write("### 🪓 Matrix Component Control")
-    cols = st.columns(min(len(st.session_state.global_watchlist), 4))
-    for idx, ticker in enumerate(list(st.session_state.global_watchlist)):
-        col_idx = idx % 4
-        with cols[col_idx]:
-            if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
-                st.session_state.global_watchlist.remove(ticker)
-                if st.session_state.selected_chart_ticker == ticker:
-                    st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
-                update_cloud_storage()
-                st.rerun()
+        # --- 6. COMPONENT CONTROL SECTOR ---
+        st.markdown("---")
+        st.write("### 🪓 Matrix Component Control")
+        cols = st.columns(min(len(st.session_state.global_watchlist), 4))
+        for idx, ticker in enumerate(list(st.session_state.global_watchlist)):
+            col_idx = idx % 4
+            with cols[col_idx]:
+                if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
+                    st.session_state.global_watchlist.remove(ticker)
+                    if st.session_state.selected_chart_ticker == ticker:
+                        st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
+                    update_cloud_storage()
+                    st.rerun()
 else:
-    st.info("Watchlist lines currently unallocated. Drop assets above.")
+    st.info("Watchlist lines currently unallocated.")
