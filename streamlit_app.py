@@ -222,9 +222,37 @@ if st.session_state.global_watchlist:
         ])
 
         with tab1:
-            st.markdown("### Systemic Short Exposure & Breakout Matrix")
-            squeeze_df = df_results[["Ticker", "Price", "20D High", "Breakout Status", "Whale Vol Ratio", "Squeeze Risk Profile"]]
-            st.dataframe(squeeze_df, use_container_width=True, hide_index=True)
+    st.markdown("### Systemic Short Exposure")
+    
+    # Define your existing dataframe structure here
+    squeeze_df = df_results[["Ticker", "Price", "Whale_Volume", "Average_Volume"]].copy()
+    
+    # RSI Calculation Logic
+    def calculate_rsi(data, window=14):
+        delta = data['Price'].diff()
+        gain = (delta.where(delta > 0, 0))
+        loss = (-delta.where(delta < 0, 0))
+        avg_gain = gain.ewm(alpha=1/window, min_periods=window).mean()
+        avg_loss = loss.ewm(alpha=1/window, min_periods=window).mean()
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    # Apply calculation
+    squeeze_df['RSI'] = calculate_rsi(squeeze_df)
+    
+    # Display the updated editor
+    st.data_editor(
+        squeeze_df,
+        use_container_width=True,
+        column_order=["Ticker", "Price", "RSI", "Whale_Volume", "Average_Volume"],
+        column_config={
+            "RSI": st.column_config.NumberColumn(
+                "RSI",
+                format="%.2f",
+                help="14-day Relative Strength Index"
+            )
+        }
+    )
 
         with tab2:
             st.markdown("### Multi-Vector Accumulation Matrix")
