@@ -1,94 +1,28 @@
-pimport streamlit as st
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import hashlib
-import urllib.request
-from bs4 import BeautifulSoup
 
-# Force wide layout and early configuration
-st.set_page_config(page_title="Rebel Terminal AI", layout="wide")
+# --- 1. INITIALIZATION & CLOUD/URL SYNC ---
+query_params = st.query_params
 
-# --- 1. INITIALIZATION & STATE ENGINE ---
 if "global_watchlist" not in st.session_state:
-    try:
-        query_params = st.query_params
-        if "symbols" in query_params and query_params["symbols"]:
-            st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
-        else:
-            st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
-    except:
+    if "symbols" in query_params:
+        st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
+    else:
         st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
 
 if "selected_chart_ticker" not in st.session_state:
     st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
 
 def update_cloud_storage():
-    try:
-        if st.session_state.global_watchlist:
-            st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
-        else:
-            if "symbols" in st.query_params:
-                del st.query_params["symbols"]
-    except:
-        pass
+    if st.session_state.global_watchlist:
+        st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
+    else:
+        if "symbols" in st.query_params:
+            del st.query_params["symbols"]
 
-# --- PUBLIC DATA DUAL-MODE SCANNER ---
-def fetch_preshift_movers():
-    """
-    Direct API implementation that bypasses HTML blocks completely.
-    Scans a high-velocity basket of momentum favorites using internal JSON lines.
-    """
-    try:
-        # High-velocity structural momentum small-caps/penny stock watch basket
-        momentum_basket = [
-            "SOUN", "BBAI", "GFAI", "KOSS", "IREN", "CORZ", "APLD", "WULF", 
-            "MARA", "HUT", "RIOT", "CLSK", "BITF", "BTDR", "POWL", "SMCI"
-        ]
-        
-        # Pull direct raw data from API endpoints
-        ticker_string = " ".join(momentum_basket)
-        data = yf.download(ticker_string, period="2d", group_by="ticker", progress=False)
-        
-        movers = []
-        for ticker in momentum_basket:
-            try:
-                if ticker not in data.columns.levels[0]:
-                    continue
-                df = data[ticker].dropna()
-                if len(df) < 2:
-                    continue
-                
-                prev_close = float(df["Close"].iloc[-2])
-                current_price = float(df["Close"].iloc[-1])
-                volume = int(df["Volume"].iloc[-1])
-                
-                # Calculate direct mathematical gap/change percentage
-                gap_pct = ((current_price - prev_close) / prev_close) * 100
-                
-                # Broaden constraints slightly to ensure visibility
-                if current_price <= 500.00:  
-                    movers.append({
-                        "Ticker": ticker,
-                        "Price": f"${current_price:.2f}",
-                        "Prev Close": f"${prev_close:.2f}",
-                        "Gap/Change %": round(gap_pct, 2),
-                        "Volume Lines": volume,
-                        "Session Source": "Direct JSON Engine"
-                    })
-            except:
-                continue
-                
-        df_movers = pd.DataFrame(movers)
-        if not df_movers.empty:
-            # Sort by absolute highest percentage runners first
-            return df_movers.sort_values(by="Gap/Change %", ascending=False).reset_index(drop=True)
-        return pd.DataFrame()
-        
-    except Exception as e:
-        return pd.DataFrame()
-
-
-# --- 2. MULTI-VECTOR RADAR & DATA ENGINE ---
+# --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
 def fetch_terminal_data(tickers, timeframe="6mo"):
     matrix_data = []
     historical_charts = {}
@@ -102,8 +36,9 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
         leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
         leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
         trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
+        
         hf_pod_favorites = ["NVDA", "MSFT", "PLTR", "AMZN", "META"] 
-        hf_activist_targets = ["WOLF", "CORZ", "APLD"]
+        hf_activist_targets = ["WOLF", "CORZ", "APLD", "ATLC"]
 
         for ticker in tickers:
             if len(tickers) == 1:
@@ -186,11 +121,11 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
                 "Executive/Capitol Disclosures": political_signal
             })
     except Exception as e:
-        st.error(f"Data Engine Error: {e}")
+        st.error(f"Data Connection Interrupted: {e}")
         
     return pd.DataFrame(matrix_data), historical_charts
 
-# --- 3. INTERFACE HEADER ---
+# --- 3. INTERFACE HEADER & ADD TICKER LINE ---
 st.markdown("# 🦅 Rebel Terminal AI")
 
 with st.form(key="add_ticker_form", clear_on_submit=True):
@@ -201,58 +136,42 @@ with st.form(key="add_ticker_form", clear_on_submit=True):
         if new_ticker not in st.session_state.global_watchlist:
             st.session_state.global_watchlist.append(new_ticker)
             update_cloud_storage()
+            st.toast(f"Added {new_ticker} to matrix lines!", icon="✅")
             st.rerun()
 
-# --- 4. MAIN INTERFACE RENDERING ---
+# --- 4. TIMEFRAME SELECTOR & DATA COMPILATION ---
 if st.session_state.global_watchlist:
-    selected_timeframe = st.radio(
-        "Select Terminal Structural Horizon Lookup:",
-        options=["3mo", "6mo"],
-        index=1,
-        horizontal=True
-    )
+    selected_timeframe = st.radio("Select Terminal Structural Horizon Lookup:", options=["3mo", "6mo"], index=1, horizontal=True)
 
-    df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist, timeframe=selected_timeframe)
+    with st.spinner(f"Analyzing macro metrics over {selected_timeframe} lines..."):
+        df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist, timeframe=selected_timeframe)
 
     if not df_results.empty:
-        tab1, tab2, tab3 = st.tabs([
-            "🔥 Institutional Squeeze Radar", 
-            "🏛️ Market Alpha & Flows", 
-            "⚡ Preshift Momentum"
-        ])
+        tab1, tab2 = st.tabs(["🔥 Institutional Squeeze Radar", "🏛️ Market Alpha & Flows"])
 
         with tab1:
             st.markdown("### Systemic Short Exposure & Breakout Matrix")
             squeeze_df = df_results[["Ticker", "Price", "20D High", "Breakout Status", "Whale Vol Ratio", "Squeeze Risk Profile"]]
-            st.dataframe(squeeze_df, use_container_width=True, hide_index=True)
+            def style_squeeze_tab(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                styles["Squeeze Risk Profile"] = df["Squeeze Risk Profile"].apply(lambda x: "background-color: #4c1d1d; color: #ff9999; font-weight: bold;" if "CRITICAL" in x else "")
+                styles["Breakout Status"] = df["Breakout Status"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Breakout" in x else "")
+                return styles
+            st.dataframe(squeeze_df.style.apply(style_squeeze_tab, axis=None), use_container_width=True, hide_index=True)
 
         with tab2:
             st.markdown("### Multi-Vector Accumulation Matrix")
             flow_df = df_results[["Ticker", "Price", "Institutional Flow", "Situational Awareness (Aschenbrenner)", "Hedge Fund Positioning", "Executive/Capitol Disclosures"]]
-            st.dataframe(flow_df, use_container_width=True, hide_index=True)
+            def style_flow_tab(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                styles["Institutional Flow"] = df["Institutional Flow"].apply(lambda x: "background-color: #0f2d4a; color: #99ccff; font-weight: bold;" if "WHALE" in x else "")
+                styles["Situational Awareness (Aschenbrenner)"] = df["Situational Awareness (Aschenbrenner)"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Long" in x else ("background-color: #4a1515; color: #ff9999;" if "Put" in x else ""))
+                styles["Hedge Fund Positioning"] = df["Hedge Fund Positioning"].apply(lambda x: "background-color: #3b3613; color: #ffea75;" if "Activist" in x else ("background-color: #113836; color: #7efce6;" if "Momentum" in x else ("background-color: #381111; color: #fc7e7e;" if "Short" in x else "")))
+                styles["Executive/Capitol Disclosures"] = df["Executive/Capitol Disclosures"].apply(lambda x: "background-color: #3d1b40; color: #f2a2f5; font-weight: bold;" if "Active" in x else "")
+                return styles
+            st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), use_container_width=True, hide_index=True)
 
-        with tab3:
-            st.markdown("### Momentum Velocity Radar ($1.00 - $10.00)")
-            
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.info("💡 Options Protocol: Double-check that options chains for target small-caps possess narrow bid-ask spreads.")
-            with col_b:
-                refresh_preshift = st.button("🔄 Scan Market Lines", use_container_width=True)
-                
-            if refresh_preshift or 'preshift_cache' not in st.session_state:
-                st.session_state.preshift_cache = fetch_preshift_movers()
-                    
-            if not st.session_state.preshift_cache.empty:
-                st.dataframe(
-                    st.session_state.preshift_cache,
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.warning("No active small-cap targets currently matching structural momentum baseline parameters.")
-
-        # --- 5. VISUAL CHART MATRIX OVERLAY ---
+        # --- 5. THE VISUAL CHART MATRIX OVERLAY ---
         st.markdown("---")
         st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
         
@@ -260,28 +179,37 @@ if st.session_state.global_watchlist:
         if st.session_state.selected_chart_ticker not in current_watchlist:
             st.session_state.selected_chart_ticker = current_watchlist[0] if current_watchlist else "NVDA"
             
-        active_ticker = st.selectbox(
-            "Select Target Vector Focus to Plot:", 
-            options=current_watchlist,
-            index=current_watchlist.index(st.session_state.selected_chart_ticker) if current_watchlist else 0
-        )
+        active_ticker = st.selectbox("Select Target Vector Focus to Plot:", options=current_watchlist, index=current_watchlist.index(st.session_state.selected_chart_ticker) if current_watchlist else 0)
         st.session_state.selected_chart_ticker = active_ticker
 
         if active_ticker in chart_library:
             ticker_data = chart_library[active_ticker]
+            
+            # --- DYNAMIC TRAILING STOP LOGIC ---
+            df_atr = ticker_data.copy()
+            df_atr['Volatility_Band'] = df_atr['Close'].rolling(window=14).std() * 2.5
+            df_atr['Trailing_Stop_Floor'] = df_atr['Close'] - df_atr['Volatility_Band']
+            
+            current_close = float(df_atr['Close'].iloc[-1])
+            current_floor = float(df_atr['Trailing_Stop_Floor'].iloc[-1])
+            recommended_pct = ((current_close - current_floor) / current_close) * 100
+            
+            st.metric(label=f"🛡️ Dynamic Volatility Trailing Stop ({active_ticker})", value=f"${current_floor:.2f}", delta=f"Set Stop at -{recommended_pct:.1f}% from peak")
+            st.caption("This floor automatically widens during high-velocity institutional squeezes to prevent premature shakeouts.")
+
             st.line_chart(ticker_data['Close'], color="#00ffcc")
             st.bar_chart(ticker_data['Volume'], color="#1f77b4")
 
-        # --- 6. COMPONENT CONTROL SECTOR ---
-        st.markdown("---")
-        st.write("### 🪓 Matrix Component Control")
-        cols = st.columns(min(len(st.session_state.global_watchlist), 4))
-        for idx, ticker in enumerate(list(st.session_state.global_watchlist)):
-            col_idx = idx % 4
-            with cols[col_idx]:
-                if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
-                    st.session_state.global_watchlist.remove(ticker)
-                    update_cloud_storage()
-                    st.rerun()
+    st.write("### 🪓 Matrix Component Control")
+    cols = st.columns(min(len(st.session_state.global_watchlist), 4))
+    for idx, ticker in enumerate(list(st.session_state.global_watchlist)):
+        col_idx = idx % 4
+        with cols[col_idx]:
+            if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
+                st.session_state.global_watchlist.remove(ticker)
+                if st.session_state.selected_chart_ticker == ticker:
+                    st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
+                update_cloud_storage()
+                st.rerun()
 else:
-    st.info("Watchlist lines currently unallocated.")
+    st.info("Watchlist lines currently unallocated. Drop assets above.")
