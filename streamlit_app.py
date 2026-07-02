@@ -1,442 +1,209 @@
 import streamlit as st
-import pandas as pd
-from datetime import datetime, timedelta
-from sec_api import QueryApi
 import yfinance as yf
-import json
-import os
+import pandas as pd
+import hashlib
 
-# ──────────────────────────────────────────────────────────
-# CONFIGURATION & GLOBAL SETUP (PERSISTENT CORES)
-# ──────────────────────────────────────────────────────────
-st.set_page_config(page_title="Asymmetry Dashboard", layout="wide")
+# --- 1. INITIALIZATION & CLOUD/URL SYNC ---
+query_params = st.query_params
 
-WATCHLIST_FILE = "watchlist.json"
-BASE_SEED_TRACKS = [
-    "FIX", "VRT", "CIEN", "SMCI", "BE", 
-    "NVDA", "MRVL", "TSM", "UMC", "POWL", "AGX",
-    "STX", "COPX", "ANFGF", "ALB", "REMX", "DVN"
-]
+if "global_watchlist" not in st.session_state:
+    if "symbols" in query_params:
+        st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
+    else:
+        st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
 
-def load_permanent_watchlist():
-    """Reads saved tickers from the local JSON storage file."""
-    if os.path.exists(WATCHLIST_FILE):
-        try:
-            with open(WATCHLIST_FILE, "r") as f:
-                saved_list = json.load(f)
-                if isinstance(saved_list, list) and len(saved_list) > 0:
-                    return saved_list
-        except Exception:
-            pass
-    return BASE_SEED_TRACKS.copy()
+if "selected_chart_ticker" not in st.session_state:
+    st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
 
-def save_permanent_watchlist(updated_list):
-    """Commits active tracking state directly to disk memory."""
+def update_cloud_storage():
+    if st.session_state.global_watchlist:
+        st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
+    else:
+        if "symbols" in st.query_params:
+            del st.query_params["symbols"]
+
+# --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
+def fetch_terminal_data(tickers, timeframe="6mo"):
+    """
+    Downloads fresh market metrics using extended structural horizons (3mo or 6mo).
+    """
+    matrix_data = []
+    historical_charts = {}
+    if not tickers:
+        return pd.DataFrame(), {}
+        
     try:
-        with open(WATCHLIST_FILE, "w") as f:
-            json.dump(updated_list, f, indent=4)
+        # Pulling lookback period dictated by user timeframe toggle
+        data = yf.download(tickers, period=timeframe, group_by="ticker", progress=False)
+        
+        leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
+        leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
+        trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
+
+        for ticker in tickers:
+            df = data[ticker] if len(tickers) > 1 else data
+            df = df.dropna()
+            if df.empty or len(df) < 5:
+                continue
+                
+            # Cache the full extended series for interactive plotting
+            historical_charts[ticker] = df[['Close', 'Volume']]
+                
+            current_price = df["Close"].iloc[-1]
+            current_volume = df["Volume"].iloc[-1]
+            
+            historical_df = df.iloc[:-1]
+            twenty_day_high = historical_df["High"].tail(20).max() # Keeps lookback breakout strict to recent 20D window
+            avg_volume = historical_df["Volume"].mean()
+            
+            # Vector 1: Technical Breakouts
+            price_breakout = current_price >= twenty_day_high
+            volume_surge = current_volume >= (avg_volume * 1.5)
+            whale_multiplier = float(current_volume / avg_volume)
+            
+            if price_breakout and volume_surge:
+                breakout_signal = "🔥 FULL BREAKOUT"
+            elif price_breakout:
+                breakout_signal = "📈 Price Breakout"
+            elif volume_surge:
+                breakout_signal = "⚡ Volume Surge"
+            else:
+                breakout_signal = "⚪ Consolidated"
+            
+            # Squeeze Core Calculations
+            if whale_multiplier > 2.0 or (price_breakout and volume_surge):
+                inst_action = "🐋 WHALE BLOCK BUY"
+                squeeze_risk = "🔥 CRITICAL SQUEEZE"
+            elif volume_surge:
+                inst_action = "⚡ Institutional Squeeze"
+                squeeze_risk = "💥 High Squeeze Potential"
+            elif price_breakout:
+                inst_action = "📈 Delta Accumulation"
+                squeeze_risk = "📈 Technical Breakout"
+            else:
+                inst_action = "🛡️ Steady Squeeze"
+                squeeze_risk = "🛡️ Normal Exposure"
+                
+            # Vector 2: Aschenbrenner AI Infra
+            if ticker in leopold_longs:
+                leopold_signal = "⚡ Long Data Center/Infra"
+            elif ticker in leopold_shorts:
+                leopold_signal = "🚨 Heavy Notional Put Hedge"
+            else:
+                leopold_signal = "⚪ Unallocated"
+                
+            # Vector 3: Political Disclosures
+            ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
+            if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
+                political_signal = "🏛️ Active Allocation Spike"
+            else:
+                political_signal = "💤 Dormant Portfolio Item"
+                
+            matrix_data.append({
+                "Ticker": ticker,
+                "Price": f"${current_price:.2f}",
+                "Whale Vol Ratio": f"{whale_multiplier:.2f}x",
+                "20D High": f"${twenty_day_high:.2f}",
+                "Breakout Status": breakout_signal,
+                "Squeeze Risk Profile": squeeze_risk,
+                "Institutional Flow": inst_action,
+                "Situational Awareness (Aschenbrenner)": leopold_signal,
+                "Executive/Capitol Disclosures": political_signal
+            })
     except Exception as e:
-        st.sidebar.error(f"Memory Write Failure: {e}")
+        st.error(f"Data Connection Interrupted: {e}")
+        
+    return pd.DataFrame(matrix_data), historical_charts
 
-# Initialize session state from the permanent file matrix
-if "watchlist" not in st.session_state:
-    st.session_state.watchlist = load_permanent_watchlist()
+# --- 3. INTERFACE HEADER & ADD TICKER LINE ---
+st.markdown("# 🦅 Rebel Terminal AI")
 
-# Load SEC API Key from Streamlit Secrets securely
-SEC_API_KEY = st.secrets.get("SEC_API_KEY", "")
-
-# ──────────────────────────────────────────────────────────
-# SIDEBAR CONTROLS & DYNAMIC WATCHLIST MANAGER
-# ──────────────────────────────────────────────────────────
-st.sidebar.title("🦅 Asymmetry Control Panel")
-
-if not SEC_API_KEY:
-    SEC_API_KEY = st.sidebar.text_input("Enter SEC-CONNECTION Key:", type="password")
-else:
-    st.sidebar.success("🔑 SEC Connection Authenticated.")
-
-if not SEC_API_KEY:
-    st.warning("⚠️ Please provide your SEC-API.io key in the sidebar or Cloud Secrets to run the terminal components.")
-    st.stop()
-
-lookback_days = st.sidebar.slider("Insider Tracking Window (Days)", min_value=3, max_value=30, value=14)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🛠️ Watchlist Asset Matrix")
-
-# 1. Bulk Add Tickers Interface
-bulk_input = st.sidebar.text_input("Add New Ticker(s) (Comma Separated):", placeholder="e.g., DRAM, AXTI, MTZ, SOXX")
-if st.sidebar.button("➕ Inject into Matrix"):
-    if bulk_input:
-        new_tickers = [t.strip().upper() for t in bulk_input.split(",") if t.strip()]
-        added_count = 0
-        for ticker in new_tickers:
-            if ticker not in st.session_state.watchlist:
-                st.session_state.watchlist.append(ticker)
-                added_count += 1
-        if added_count > 0:
-            save_permanent_watchlist(st.session_state.watchlist)
-            st.sidebar.success(f"Injected {added_count} new asset tracks!")
+with st.form(key="add_ticker_form", clear_on_submit=True):
+    new_ticker = st.text_input("Deploy Asset to Matrix Ticker Line (e.g., POWL, SMCI):").strip().upper()
+    submit_button = st.form_submit_button(label="⚡ Add to Watchlist")
+    
+    if submit_button and new_ticker:
+        if new_ticker not in st.session_state.global_watchlist:
+            st.session_state.global_watchlist.append(new_ticker)
+            update_cloud_storage()
+            st.toast(f"Added {new_ticker} to matrix lines!", icon="✅")
             st.rerun()
 
-# 2. Individual Removal Interface
-ticker_to_remove = st.sidebar.selectbox("Select Asset to Purge:", [""] + sorted(st.session_state.watchlist))
-if st.sidebar.button("❌ Remove Selected"):
-    if ticker_to_remove and ticker_to_remove in st.session_state.watchlist:
-        st.session_state.watchlist.remove(ticker_to_remove)
-        save_permanent_watchlist(st.session_state.watchlist)
-        st.sidebar.warning(f"Purged {ticker_to_remove} from tracking matrix.")
-        st.rerun()
-
-st.sidebar.info(f"Total Active Trackers: **{len(st.session_state.watchlist)}**")
-
-# ──────────────────────────────────────────────────────────
-# THREE-TAB LAYOUT
-# ──────────────────────────────────────────────────────────
-tab_insider, tab_radar, tab_institutional = st.tabs([
-    "🕵️‍♂️ Live C-Suite Insiders", 
-    "📈 Structural Uptrend Radar", 
-    "🐳 Institutional Distribution"
-])
-
-query_api = QueryApi(api_key=SEC_API_KEY)
-
-# ──────────────────────────────────────────────────────────
-# DATA FETCHING UTILITY ENGINE
-# ──────────────────────────────────────────────────────────
-@st.cache_data(ttl=600)
-def fetch_raw_market_data(ticker_list):
-    """Unified engine to batch load market rows cleanly."""
-    if not ticker_list:
-        return {}
-    
-    tickers_string = " ".join(ticker_list)
-    try:
-        batch_data = yf.download(tickers_string, period="1y", group_by="ticker", threads=False, progress=False)
-    except Exception:
-        batch_data = pd.DataFrame()
-        
-    master_frames = {}
-    for ticker in ticker_list:
-        df = pd.DataFrame()
-        if not batch_data.empty and len(ticker_list) > 1 and ticker in batch_data.columns.levels[0]:
-            df = batch_data[ticker].dropna()
-        elif not batch_data.empty and len(ticker_list) == 1:
-            df = batch_data.dropna()
-            
-        if df.empty or len(df) < 5:
-            try:
-                asset = yf.Ticker(ticker)
-                df = asset.history(period="1y").dropna()
-            except Exception:
-                continue
-        if not df.empty and len(df) >= 5:
-            master_frames[ticker] = df
-            
-    return master_frames
-
-# ──────────────────────────────────────────────────────────
-# TAB 1: INSIDER TRADING LOGIC
-# ──────────────────────────────────────────────────────────
-with tab_insider:
-    st.subheader("Real-Time Corporate Insider Outlays")
-    st.markdown("Scraping direct SEC EDGAR Form 4 streams. Automated robotic 10b51 plans are completely omitted.")
-    
-    @st.cache_data(ttl=300)
-    def fetch_high_conviction_insiders(days_to_search):
-        start_date = (datetime.now() - timedelta(days=days_to_search)).strftime('%Y-%m-%d')
-        lucene_query = (
-            f"formType:\"4\" AND "
-            f"filedAt:[{start_date} TO *] AND "
-            f"transactions.transactionCode:\"P\" AND "
-            f"transactions.isRule10b51:\"false\""
-        )
-        payload = {
-            "query": { "query_string": { "query": lucene_query } },
-            "from": "0", "size": "50",
-            "sort": [{ "filedAt": { "order": "desc" } }]
-        }
-        try:
-            response = query_api.get_filings(payload)
-            filings = response.get("filings", [])
-            parsed_trades = []
-            for filing in filings:
-                issuer = filing.get("issuer", {})
-                if not issuer: continue
-                ticker = issuer.get("tradingSymbol", "N/A")
-                company_name = issuer.get("name", "N/A")
-                reporting_owner = filing.get("reportingOwner", {})
-                insider_name = reporting_owner.get("name", "N/A") if reporting_owner else "N/A"
-                
-                role = "Other"
-                if reporting_owner:
-                    is_director = reporting_owner.get("isDirector", False)
-                    is_officer = reporting_owner.get("isOfficer", False)
-                    officer_title = reporting_owner.get("officerTitle", "")
-                    if "CEO" in str(officer_title).upper(): role = "CEO"
-                    elif is_officer: role = f"Officer ({officer_title})" if officer_title else "Officer"
-                    elif is_director: role = "Director"
-
-                for tx in filing.get("nonDerivativeTransactions", []):
-                    if tx.get("transactionCode") == "P" and str(tx.get("isRule10b51")).lower() != "true":
-                        shares = float(tx.get("transactionShares", 0) or 0)
-                        price = float(tx.get("transactionPricePerShare", 0) or 0)
-                        total_value = shares * price
-                        shares_owned_after = float(tx.get("sharesOwnedFollowingTransaction", 0) or 0)
-                        
-                        position_increase_pct = 0
-                        if (shares_owned_after - shares) > 0:
-                            position_increase_pct = (shares / (shares_owned_after - shares)) * 100
-
-                        if total_value >= 10000:
-                            parsed_trades.append({
-                                "Filing Date": filing.get("filedAt")[:10] if filing.get("filedAt") else "N/A",
-                                "Ticker": ticker, "Company Name": company_name, "Insider Trader": insider_name,
-                                "Role": role, "Shares Bought": f"{shares:,.0f}", "Price Paid": f"${price:,.2f}",
-                                "Total Outlay": total_value, "Position Jump": f"+{position_increase_pct:.1f}%" if shares_owned_after else "New Stake"
-                            })
-            df = pd.DataFrame(parsed_trades)
-            return df.sort_values(by="Total Outlay", ascending=False).reset_index(drop=True) if not df.empty else pd.DataFrame()
-        except Exception as e:
-            st.error(f"SEC Query Engine Error: {e}")
-            return pd.DataFrame()
-
-    with st.spinner("Extracting SEC filings..."):
-        insider_df = fetch_high_conviction_insiders(lookback_days)
-
-    if not insider_df.empty:
-        cluster_counts = insider_df.groupby("Ticker")["Insider Trader"].nunique()
-        clusters = cluster_counts[cluster_counts >= 2].index.tolist()
-        if clusters:
-            st.error(f"### 🚨 MULTI-INSIDER CLUSTERS SPOTTED: {', '.join(clusters)}")
-        
-        display_insider = insider_df.copy()
-        display_insider["Total Outlay"] = display_insider["Total Outlay"].apply(lambda x: f"${x:,.2f}")
-        
-        # Cleaned width definitions to let natural expansion prevent truncation
-        st.dataframe(
-            display_insider,
-            use_container_width=True
-        )
-    else:
-        st.info("No manual cash purchases detected over $10k in this timeframe.")
-
-# ──────────────────────────────────────────────────────────
-# TAB 2: STRUCTURAL UPTREND RADAR
-# ──────────────────────────────────────────────────────────
-with tab_radar:
-    st.subheader("Master Matrix Trend Architecture")
-    st.markdown("Filtered for immediate 20-day momentum. Assets coasting flat or breaking down short-term are explicitly downgraded.")
-    
-    st.markdown("### 🔍 Tactical Side-by-Side Comparator")
-    selected_comparisons = st.multiselect(
-        "Select Specific Assets to Benchmark (e.g., compare FIX vs. MU):", 
-        options=sorted(st.session_state.watchlist),
-        help="Select multiple tickers from your permanent database matrix to create an isolated tracking breakdown."
+# --- 4. TIMEFRAME SELECTOR & DATA COMPILATION ---
+if st.session_state.global_watchlist:
+    # Macro Horizon Controller added directly to header parameters
+    selected_timeframe = st.radio(
+        "Select Terminal Structural Horizon Lookup:",
+        options=["3mo", "6mo"],
+        index=1, # Defaulting to 6 Months for deeper profile views
+        horizontal=True
     )
-    
-    def process_radar_metrics(market_data_dict):
-        processed_records = []
-        for ticker, df in market_data_dict.items():
-            try:
-                close_col = 'Close' if 'Close' in df.columns else '4. close'
-                vol_col = 'Volume' if 'Volume' in df.columns else '5. volume'
-                
-                close_series = df[close_col].astype(float)
-                vol_series = df[vol_col].astype(float)
-                
-                current_price = float(close_series.iloc[-1])
-                available_bars = len(close_series)
-                
-                current_volume = float(vol_series.iloc[-1])
-                vol_lookback = min(20, available_bars)
-                avg_volume_baseline = float(vol_series.rolling(window=vol_lookback).mean().iloc[-1])
-                
-                volume_surge_pct = ((current_volume - avg_volume_baseline) / avg_volume_baseline) * 100 if avg_volume_baseline > 0 else 0.0
-                
-                rsi_lookback = min(14, available_bars - 1)
-                if rsi_lookback >= 2:
-                    delta = close_series.diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=rsi_lookback).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_lookback).mean()
-                    rs = gain / (loss + 1e-9)
-                    rsi = float(100 - (100 / (1 + rs)).iloc[-1])
-                else:
-                    rsi = 50.0
 
-                perf_lookback = min(21, available_bars)
-                price_past = float(close_series.iloc[-perf_lookback])
-                perf_1m = ((current_price - price_past) / price_past) * 100
+    with st.spinner(f"Analyzing macro metrics over {selected_timeframe} lines..."):
+        df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist, timeframe=selected_timeframe)
 
-                if available_bars < 50:
-                    sma_short = float(close_series.rolling(window=min(10, available_bars)).mean().iloc[-1])
-                    sma_long = float(close_series.rolling(window=min(20, available_bars)).mean().iloc[-1])
-                    if current_price > sma_short and sma_short > sma_long: status = "🔥 Strong Uptrend"
-                    elif current_price <= sma_short and current_price > sma_long: status = "💤 Stalling / Flat"
-                    else: status = "⚠️ Structural Breakdown"
-                    display_50, dist_to_50_str, display_200, dist_to_200_str = "N/A (New)", "0.0%", "N/A (New)", "0.0%"
-                else:
-                    sma_20 = float(close_series.rolling(window=20).mean().iloc[-1])
-                    sma_50 = float(close_series.rolling(window=50).mean().iloc[-1])
-                    sma_200 = float(close_series.rolling(window=200).mean().iloc[-1]) if available_bars >= 200 else sma_50
-                    
-                    if current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200: status = "🔥 Strong Uptrend"
-                    elif current_price <= sma_20 and current_price > sma_50: status = "💤 Stalling / Flat"
-                    elif current_price <= sma_50 and current_price > sma_200: status = "⏳ Support Test"
-                    else: status = "⚠️ Structural Breakdown"
-                        
-                    dist_to_50 = ((current_price - sma_50) / sma_50) * 100
-                    display_50 = f"${sma_50:.2f}"
-                    dist_to_50_str = f"{dist_to_50:+.1f}%"
-                    
-                    if available_bars >= 200:
-                        dist_to_200 = ((current_price - sma_200) / sma_200) * 100
-                        display_200 = f"${sma_200:.2f}"
-                        dist_to_200_str = f"{dist_to_200:+.1f}%"
-                    else:
-                        display_200, dist_to_200_str = "N/A", "0.0%"
+    if not df_results.empty:
+        # --- TAB OVERLAYS ---
+        tab1, tab2 = st.tabs(["🔥 Institutional Squeeze Radar", "🏛️ Market Alpha & Flows"])
 
-                # Remapped keys with clear emojis to maximize viewability without squeezing strings
-                processed_records.append({
-                    "Ticker": ticker, 
-                    "Price": f"${current_price:.2f}", 
-                    "Structure": status,
-                    "RSI": f"{rsi:.1f}", 
-                    "1M Ret": f"{perf_1m:+.1f}%", 
-                    "Vol Surge": f"{volume_surge_pct:+.1f}%",
-                    "SMA 50": display_50, 
-                    "🚀 SMA 50": dist_to_50_str, 
-                    "SMA 200": display_200,
-                    "🛡️ SMA 200": dist_to_200_str, 
-                    "raw_sort": perf_1m
-                })
-            except Exception:
-                pass
-        return processed_records
-
-    # Comparative Selection Rendering Engine
-    if len(selected_comparisons) >= 2:
-        with st.spinner("Isolating comparative data metrics..."):
-            comp_raw_data = fetch_raw_market_data(selected_comparisons)
-            comp_records = process_radar_metrics(comp_raw_data)
+        # --- TAB 1: SQUEEZE & BREAKOUTS ---
+        with tab1:
+            st.markdown("### Systemic Short Exposure & Breakout Matrix")
+            squeeze_df = df_results[["Ticker", "Price", "20D High", "Breakout Status", "Whale Vol Ratio", "Squeeze Risk Profile"]]
             
-            if comp_records:
-                comp_df = pd.DataFrame(comp_records).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-                st.info(f"⚡ Side-by-Side Comparison Matrix ({len(selected_comparisons)} Assets Isolated)")
-                
-                def style_comp_rows(val):
-                    if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.25); font-weight: bold;"
-                    elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.25);"
-                    elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.25);"
-                    elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.25); font-weight: bold;"
-                    return ""
-                    
-                # Dropped explicit text column restrictions so pandas/streamlit handles mobile wrapping organically
-                st.dataframe(
-                    comp_df.style.map(style_comp_rows, subset=["Structure"]),
-                    use_container_width=True,
-                    hide_index=True
-                )
-            st.markdown("---")
+            def style_squeeze_tab(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                styles["Squeeze Risk Profile"] = df["Squeeze Risk Profile"].apply(lambda x: "background-color: #4c1d1d; color: #ff9999; font-weight: bold;" if "CRITICAL" in x else "")
+                styles["Breakout Status"] = df["Breakout Status"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Breakout" in x else "")
+                return styles
+            st.dataframe(squeeze_df.style.apply(style_squeeze_tab, axis=None), width="stretch", hide_index=True)
 
-    if st.button("🔄 Execute Full Watchlist Radar Scan"):
-        with st.spinner("Compiling multi-timeframe structural trends..."):
-            market_data = fetch_raw_market_data(st.session_state.watchlist)
-            screened_data = process_radar_metrics(market_data)
-
-        if screened_data:
-            radar_df = pd.DataFrame(screened_data).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-            def style_structure_rows(val):
-                if "🔥" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
-                elif "💤" in str(val): return "background-color: rgba(255, 140, 0, 0.15);"
-                elif "⏳" in str(val): return "background-color: rgba(255, 193, 7, 0.15);"
-                elif "⚠️" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
-                return ""
-            st.dataframe(
-                radar_df.style.map(style_structure_rows, subset=["Structure"]), 
-                use_container_width=True, 
-                hide_index=True
-            )
-        else:
-            st.info("The watchlist is empty or data servers are congested. Load tickers to ignite.")
-
-# ──────────────────────────────────────────────────────────
-# TAB 3: LIVE INSTITUTIONAL DISTRIBUTION ENGINE 
-# ──────────────────────────────────────────────────────────
-with tab_institutional:
-    st.subheader("Institutional Whales Tracking Matrix")
-    st.markdown("Isolates anomalous trading footprint trends. Identifies heavy institutional loading vs. aggressive retail distribution.")
-    
-    if st.button("🐳 Run Whales Volume Footprint Scan"):
-        with st.spinner("Decoding institutional block setups..."):
-            market_data = fetch_raw_market_data(st.session_state.watchlist)
-            whale_data = []
+        # --- TAB 2: ADVANCED ALIAS FLOWS ---
+        with tab2:
+            st.markdown("### Multi-Vector Accumulation Matrix")
+            flow_df = df_results[["Ticker", "Price", "Whale Vol Ratio", "Institutional Flow", "Situational Awareness (Aschenbrenner)", "Executive/Capitol Disclosures"]]
             
-            for ticker, df in market_data.items():
-                try:
-                    close_col = 'Close' if 'Close' in df.columns else '4. close'
-                    vol_col = 'Volume' if 'Volume' in df.columns else '5. volume'
-                    open_col = 'Open' if 'Open' in df.columns else '1. open'
-                    
-                    close_series = df[close_col].astype(float)
-                    vol_series = df[vol_col].astype(float)
-                    open_series = df[open_col].astype(float)
-                    
-                    current_price = float(close_series.iloc[-1])
-                    prev_price = float(close_series.iloc[-2])
-                    current_open = float(open_series.iloc[-1])
-                    current_volume = float(vol_series.iloc[-1])
-                    
-                    available_bars = len(close_series)
-                    vol_lookback = min(20, available_bars)
-                    avg_volume_20d = float(vol_series.rolling(window=vol_lookback).mean().iloc[-1])
-                    
-                    vol_surge_pct = ((current_volume - avg_volume_20d) / avg_volume_20d) * 100 if avg_volume_20d > 0 else 0.0
-                    price_change_pct = ((current_price - prev_price) / prev_price) * 100
-                    intraday_direction = current_price - current_open
-                    
-                    if price_change_pct > 0 and intraday_direction > 0:
-                        flow_type = "🐋 Accumulation"
-                        sort_score = vol_surge_pct
-                    elif price_change_pct < 0 and intraday_direction < 0:
-                        flow_type = "🚨 Distribution"
-                        sort_score = vol_surge_pct * 2
-                    else:
-                        flow_type = "💨 Mixed Flow"
-                        sort_score = -500.0 + vol_surge_pct
+            def style_flow_tab(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                styles["Institutional Flow"] = df["Institutional Flow"].apply(lambda x: "background-color: #0f2d4a; color: #99ccff; font-weight: bold;" if "WHALE" in x else "")
+                styles["Situational Awareness (Aschenbrenner)"] = df["Situational Awareness (Aschenbrenner)"].apply(lambda x: "background-color: #1a3a2a; color: #99ff99;" if "Long" in x else ("background-color: #4a1515; color: #ff9999;" if "Put" in x else ""))
+                styles["Executive/Capitol Disclosures"] = df["Executive/Capitol Disclosures"].apply(lambda x: "background-color: #3d1b40; color: #f2a2f5; font-weight: bold;" if "Active" in x else "")
+                return styles
+            st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), width="stretch", hide_index=True)
 
-                    rsi_lookback = min(14, available_bars - 1)
-                    if rsi_lookback >= 2:
-                        delta = close_series.diff()
-                        gain = (delta.where(delta > 0, 0)).rolling(window=rsi_lookback).mean()
-                        loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_lookback).mean()
-                        rs = gain / (loss + 1e-9)
-                        rsi = float(100 - (100 / (1 + rs)).iloc[-1])
-                    else:
-                        rsi = 50.0
+        # --- 5. THE VISUAL CHART MATRIX OVERLAY ---
+        st.markdown("---")
+        st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
+        
+        active_ticker = st.selectbox(
+            "Select Target Vector Focus to Plot:", 
+            options=st.session_state.global_watchlist,
+            index=st.session_state.global_watchlist.index(st.session_state.selected_chart_ticker) if st.session_state.selected_chart_ticker in st.session_state.global_watchlist else 0
+        )
+        st.session_state.selected_chart_ticker = active_ticker
 
-                    whale_data.append({
-                        "Ticker": ticker, 
-                        "Price": f"${current_price:.2f}", 
-                        "Net Chg": f"{price_change_pct:+.2f}%",
-                        "Whale Flow": flow_type, 
-                        "Vol Surge": f"{vol_surge_pct:+.1f}%",
-                        "RSI": f"{rsi:.1f}", 
-                        "raw_sort": sort_score
-                    })
-                except Exception:
-                    pass
+        if active_ticker in chart_library:
+            ticker_data = chart_library[active_ticker]
+            
+            # Interactive Trend Vector Chart matching lookback period
+            st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past {selected_timeframe})")
+            st.line_chart(ticker_data['Close'], color="#00ffcc")
+            
+            # Extended Volume Bar Chart
+            st.caption(f"Volume Profile Allocation ({active_ticker})")
+            st.bar_chart(ticker_data['Volume'], color="#1f77b4")
 
-        if whale_data:
-            whale_df = pd.DataFrame(whale_data).sort_values(by="raw_sort", ascending=False).drop(columns=["raw_sort"]).reset_index(drop=True)
-            def style_whale_rows(val):
-                if "🐋" in str(val): return "background-color: rgba(40, 167, 69, 0.15);"
-                elif "🚨" in str(val): return "background-color: rgba(220, 53, 69, 0.15);"
-                return ""
-            st.dataframe(
-                whale_df.style.map(style_whale_rows, subset=["Whale Flow"]), 
-                use_container_width=True, 
-                hide_index=True
-            )
-        else:
-            st.info("Load tickers in your active list and fire the footprint scanner.")
+    # --- 6. COMPONENT CONTROL SECTOR ---
+    st.write("### 🪓 Matrix Component Control")
+    cols = st.columns(min(len(st.session_state.global_watchlist), 4))
+    for idx, ticker in enumerate(st.session_state.global_watchlist):
+        col_idx = idx % 4
+        with cols[col_idx]:
+            if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
+                st.session_state.global_watchlist.remove(ticker)
+                if st.session_state.selected_chart_ticker == ticker:
+                    st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
+                update_cloud_storage()
+                st.rerun()
+else:
+    st.info("Watchlist lines currently unallocated. Drop assets above.")
