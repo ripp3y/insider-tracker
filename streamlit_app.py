@@ -251,6 +251,39 @@ if st.session_state.global_watchlist:
                 )
             else:
                 st.warning("No active small-cap targets currently matching structural momentum baseline parameters.")
+import pandas as pd
+
+# 1. Calculation Logic
+def calculate_rsi(df, window=14):
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0))
+    loss = (-delta.where(delta < 0, 0))
+    
+    # Using Wilder's Smoothing for more accurate RSI
+    avg_gain = gain.ewm(alpha=1/window, min_periods=window).mean()
+    avg_loss = loss.ewm(alpha=1/window, min_periods=window).mean()
+    
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+# 2. Applying to your existing dataframe
+# Replace 'df' with your actual dataframe variable name
+df['RSI'] = calculate_rsi(df)
+
+# 3. Targeted UI Update
+# This ensures the new column sits exactly where you wanted it
+st.subheader("Market Monitor")
+st.data_editor(
+    df,
+    use_container_width=True,
+    column_order=["Ticker", "Price", "RSI", "Whale_Volume", "Average_Volume"],
+    column_config={
+        "RSI": st.column_config.NumberColumn(
+            "RSI",
+            format="%.2f",
+        )
+    }
+)
 
         # --- 5. VISUAL CHART MATRIX OVERLAY ---
         st.markdown("---")
