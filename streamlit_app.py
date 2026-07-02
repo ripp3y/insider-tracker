@@ -23,7 +23,7 @@ def update_cloud_storage():
             del st.query_params["symbols"]
 
 # --- 2. MULTI-VECTOR RADAR & EXTENDED DATA ENGINE ---
-def fetch_terminal_data(tickers, timeframe="6mo"):
+ def fetch_terminal_data(tickers, timeframe="6mo", rsi_period=14):
     matrix_data = []
     historical_charts = {}
     if not tickers:
@@ -33,92 +33,33 @@ def fetch_terminal_data(tickers, timeframe="6mo"):
         ticker_string = " ".join(tickers)
         data = yf.download(ticker_string, period=timeframe, group_by="ticker", progress=False)
         
-        leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
-        leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
-        trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
-        
-        hf_pod_favorites = ["NVDA", "MSFT", "PLTR", "AMZN", "META"] 
-        hf_activist_targets = ["WOLF", "CORZ", "APLD", "ATLC"]
-
         for ticker in tickers:
-            if len(tickers) == 1:
-                df = data.dropna()
-            else:
-                if ticker not in data.columns.levels[0]:
-                    continue
-                df = data[ticker].dropna()
-                
-            if df.empty or len(df) < 5:
+            df = data[ticker].dropna() if len(tickers) > 1 else data.dropna()
+            if df.empty or len(df) < rsi_period:
                 continue
-                
-            historical_charts[ticker] = df[['Close', 'Volume']]
-                
-            current_price = float(df["Close"].iloc[-1])
-            current_volume = float(df["Volume"].iloc[-1])
+
+            # --- RSI CALCULATION ---
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0))
+            loss = (-delta.where(delta < 0, 0))
             
-            historical_df = df.iloc[:-1]
-            twenty_day_high = float(historical_df["High"].tail(20).max())
-            avg_volume = float(historical_df["Volume"].mean())
+            # Use Wilder's Smoothing
+            avg_gain = gain.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
+            avg_loss = loss.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
             
-            price_breakout = current_price >= twenty_day_high
-            volume_surge = current_volume >= (avg_volume * 1.5)
-            whale_multiplier = current_volume / avg_volume if avg_volume > 0 else 0
+            rs = avg_gain / avg_loss
+            df['RSI'] = 100 - (100 / (1 + rs))
             
-            if price_breakout and volume_surge:
-                breakout_signal = "🔥 FULL BREAKOUT"
-            elif price_breakout:
-                breakout_signal = "📈 Price Breakout"
-            elif volume_surge:
-                breakout_signal = "⚡ Volume Surge"
-            else:
-                breakout_signal = "⚪ Consolidated"
+            historical_charts[ticker] = df[['Close', 'Volume', 'RSI']]
             
-            if whale_multiplier > 2.0 or (price_breakout and volume_surge):
-                inst_action = "🐋 WHALE BLOCK BUY"
-                squeeze_risk = "🔥 CRITICAL SQUEEZE"
-            elif volume_surge:
-                inst_action = "⚡ Institutional Squeeze"
-                squeeze_risk = "💥 High Squeeze Potential"
-            elif price_breakout:
-                inst_action = "📈 Delta Accumulation"
-                squeeze_risk = "📈 Technical Breakout"
-            else:
-                inst_action = "🛡️ Steady Squeeze"
-                squeeze_risk = "🛡️ Normal Exposure"
-                
-            if ticker in leopold_longs:
-                leopold_signal = "⚡ Long Data Center/Infra"
-            elif ticker in leopold_shorts:
-                leopold_signal = "🚨 Heavy Notional Put Hedge"
-            else:
-                leopold_signal = "⚪ Unallocated"
-                
-            if ticker in hf_activist_targets or whale_multiplier > 2.2:
-                hf_signal = "🎯 Activist Target / Squeeze Lock"
-            elif ticker in hf_pod_favorites and price_breakout:
-                hf_signal = "🏢 Multi-Mgr Pod Momentum Pile-in"
-            elif ticker in leopold_shorts:
-                hf_signal = "📉 Crowded Macro Short Sector"
-            else:
-                hf_signal = "⚖️ Neutral Multi-Strategy Book"
-                
-            ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
-            if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
-                political_signal = "🏛️ Active Allocation Spike"
-            else:
-                political_signal = "💤 Dormant Portfolio Item"
-                
+            # Get latest values for the matrix
+            current_rsi = float(df['RSI'].iloc[-1])
+            # ... [rest of your existing logic]
+            
             matrix_data.append({
                 "Ticker": ticker,
-                "Price": f"${current_price:.2f}",
-                "Whale Vol Ratio": f"{whale_multiplier:.2f}x",
-                "20D High": f"${twenty_day_high:.2f}",
-                "Breakout Status": breakout_signal,
-                "Squeeze Risk Profile": squeeze_risk,
-                "Institutional Flow": inst_action,
-                "Situational Awareness (Aschenbrenner)": leopold_signal,
-                "Hedge Fund Positioning": hf_signal,
-                "Executive/Capitol Disclosures": political_signal
+                "RSI": f"{current_rsi:.2f}",
+                # ... [other columns]
             })
     except Exception as e:
         st.error(f"Data Connection Interrupted: {e}")
