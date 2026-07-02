@@ -193,28 +193,44 @@ if st.session_state.global_watchlist:
             st.dataframe(flow_df.style.apply(style_flow_tab, axis=None), use_container_width=True, hide_index=True)
 
         # --- 5. THE VISUAL CHART MATRIX OVERLAY ---
-        st.markdown("---")
-        st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
-        
-        current_watchlist = st.session_state.global_watchlist
-        if st.session_state.selected_chart_ticker not in current_watchlist:
-            st.session_state.selected_chart_ticker = current_watchlist[0] if current_watchlist else "NVDA"
-            
-        active_ticker = st.selectbox(
-            "Select Target Vector Focus to Plot:", 
-            options=current_watchlist,
-            index=current_watchlist.index(st.session_state.selected_chart_ticker) if current_watchlist else 0
-        )
-        st.session_state.selected_chart_ticker = active_ticker
+st.markdown("---")
+st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
 
-        if active_ticker in chart_library:
-            ticker_data = chart_library[active_ticker]
-            
-            st.caption(f"Velocity Trend Vector ({active_ticker} Close Price - Past {selected_timeframe})")
-            st.line_chart(ticker_data['Close'], color="#00ffcc")
-            
-            st.caption(f"Volume Profile Allocation ({active_ticker})")
-            st.bar_chart(ticker_data['Volume'], color="#1f77b4")
+current_watchlist = st.session_state.global_watchlist
+if st.session_state.selected_chart_ticker not in current_watchlist:
+    st.session_state.selected_chart_ticker = current_watchlist[0] if current_watchlist else "NVDA"
+
+active_ticker = st.selectbox(
+    "Select Target Vector Focus to Plot:", 
+    options=current_watchlist,
+    index=current_watchlist.index(st.session_state.selected_chart_ticker) if current_watchlist else 0
+)
+st.session_state.selected_chart_ticker = active_ticker
+
+if active_ticker in chart_library:
+    ticker_data = chart_library[active_ticker]
+    
+    # --- DYNAMIC TRAILING STOP LOGIC ---
+    df_atr = ticker_data.copy()
+    # Using 14-period standard deviation as a proxy for volatility to define the floor
+    df_atr['Volatility_Band'] = df_atr['Close'].rolling(window=14).std() * 2.5
+    df_atr['Trailing_Stop_Floor'] = df_atr['Close'] - df_atr['Volatility_Band']
+    
+    current_close = float(df_atr['Close'].iloc[-1])
+    current_floor = float(df_atr['Trailing_Stop_Floor'].iloc[-1])
+    recommended_pct = ((current_close - current_floor) / current_close) * 100
+    
+    # Display the stop metric
+    st.metric(
+        label=f"🛡️ Dynamic Volatility Trailing Stop ({active_ticker})", 
+        value=f"${current_floor:.2f}", 
+        delta=f"Set Stop at -{recommended_pct:.1f}% from peak"
+    )
+    st.[span_1](start_span)caption("This floor automatically widens during high-velocity institutional squeezes to prevent premature shakeouts[span_1](end_span).")
+
+    # Render Charts
+    st.line_chart(ticker_data['Close'], color="#00ffcc")
+    st.bar_chart(ticker_data['Volume'], color="#1f77b4")
 
     # --- 6. COMPONENT CONTROL SECTOR ---
     st.write("### 🪓 Matrix Component Control")
