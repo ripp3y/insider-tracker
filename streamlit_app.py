@@ -2,28 +2,106 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import hashlib
+import urllib.request
+from bs4 import BeautifulSoup
 
-# --- 1. INITIALIZATION ---
-query_params = st.query_params
+# Force wide layout and early configuration
+st.set_page_config(page_title="Rebel Terminal AI", layout="wide")
 
+# --- 1. INITIALIZATION & STATE ENGINE ---
 if "global_watchlist" not in st.session_state:
-    if "symbols" in query_params:
-        st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
-    else:
+    try:
+        query_params = st.query_params
+        if "symbols" in query_params and query_params["symbols"]:
+            st.session_state.global_watchlist = [s.strip().upper() for s in query_params["symbols"].split(",") if s.strip()]
+        else:
+            st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
+    except:
         st.session_state.global_watchlist = ["NVDA", "MU", "WOLF", "IREN", "CORZ", "APLD", "PLTR", "MSFT"]
 
 if "selected_chart_ticker" not in st.session_state:
     st.session_state.selected_chart_ticker = st.session_state.global_watchlist[0] if st.session_state.global_watchlist else "NVDA"
 
 def update_cloud_storage():
-    if st.session_state.global_watchlist:
-        st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
-    else:
-        if "symbols" in st.query_params:
-            del st.query_params["symbols"]
+    try:
+        if st.session_state.global_watchlist:
+            st.query_params["symbols"] = ",".join(st.session_state.global_watchlist)
+        else:
+            if "symbols" in st.query_params:
+                del st.query_params["symbols"]
+    except:
+        pass
 
-# --- 2. MULTI-VECTOR DATA ENGINE (RSI INTEGRATED) ---
-def fetch_terminal_data(tickers, timeframe="6mo", rsi_period=14):
+# --- PUBLIC DATA DUAL-MODE SCANNER ---
+def fetch_preshift_movers():
+    """
+    Scrapes live momentum gainers directly from public financial tracking lines.
+    Uses structural HTML attribute targeting to maintain stability.
+    """
+    try:
+        url = "https://finance.yahoo.com/markets/stocks/pre-market-gainers/"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        html = urllib.request.urlopen(req).read()
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        rows = soup.find_all('tr')
+        mode_label = "Pre-Market"
+        
+        valid_rows = [r for r in rows if r.find('td', {'data-field': 'regularMarketPrice'})]
+        
+        if not valid_rows:
+            url = "https://finance.yahoo.com/markets/stocks/gainers/"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urllib.request.urlopen(req).read()
+            soup = BeautifulSoup(html, 'html.parser')
+            rows = soup.find_all('tr')
+            valid_rows = [r for r in rows if r.find('td', {'data-field': 'regularMarketPrice'})]
+            mode_label = "Intraday"
+        
+        movers = []
+        for row in valid_rows:
+            try:
+                symbol_element = row.find('span', {'data-field': 'symbol'}) or row.find('span')
+                symbol = symbol_element.text.strip() if symbol_element else None
+                
+                price_text = row.find('td', {'data-field': 'regularMarketPrice'}).text
+                price = float(price_text.replace('$', '').replace(',', ''))
+                
+                gap_text = row.find('td', {'data-field': 'regularMarketChangePercent'}).text
+                gap_pct = float(gap_text.replace('+', '').replace('%', '').replace(',', ''))
+                
+                volume_text = row.find('td', {'data-field': 'regularMarketVolume'}).text
+                
+                if 'M' in volume_text:
+                    volume = int(float(volume_text.replace('M', '')) * 1_000_000)
+                elif 'K' in volume_text:
+                    volume = int(float(volume_text.replace('K', '')) * 1_000)
+                else:
+                    volume = int(volume_text.replace(',', ''))
+
+                max_price = 5.00 if mode_label == "Pre-Market" else 10.00
+                if 1.00 <= price <= max_price and gap_pct >= 2.0:
+                    movers.append({
+                        "Ticker": symbol,
+                        "Price": f"${price:.2f}",
+                        "Prev Close": f"${(price / (1 + (gap_pct/100))):.2f}",
+                        "Gap/Change %": gap_pct,
+                        "Volume Lines": volume,
+                        "Session Source": mode_label
+                    })
+            except:
+                continue 
+                
+        df = pd.DataFrame(movers)
+        if not df.empty:
+            return df.sort_values(by="Gap/Change %", ascending=False).reset_index(drop=True)
+        return pd.DataFrame()
+        
+    except Exception as e:
+        return pd.DataFrame()
+
+# --- 2. MULTI-VECTOR RADAR & DATA ENGINE ---
+def fetch_terminal_data(tickers, timeframe="6mo"):
     matrix_data = []
     historical_charts = {}
     if not tickers:
@@ -33,60 +111,189 @@ def fetch_terminal_data(tickers, timeframe="6mo", rsi_period=14):
         ticker_string = " ".join(tickers)
         data = yf.download(ticker_string, period=timeframe, group_by="ticker", progress=False)
         
-        # Define groupings
         leopold_longs = ["IREN", "CORZ", "APLD", "RIOT", "CLSK", "BITF", "BTDR", "BE"]
         leopold_shorts = ["NVDA", "MU", "TSM", "ASML", "INTC"]
         trump_high_velocity = ["MSFT", "AMZN", "META", "NFLX", "ORCL", "AMD", "PLTR", "NVDA"]
         hf_pod_favorites = ["NVDA", "MSFT", "PLTR", "AMZN", "META"] 
-        hf_activist_targets = ["WOLF", "CORZ", "APLD", "ATLC"]
+        hf_activist_targets = ["WOLF", "CORZ", "APLD"]
 
         for ticker in tickers:
-            # Handle Data Normalization
-            df = data[ticker].dropna() if len(tickers) > 1 else data.dropna()
-            if df.empty or len(df) < rsi_period:
+            if len(tickers) == 1:
+                df = data.dropna()
+            else:
+                if ticker not in data.columns.levels[0]:
+                    continue
+                df = data[ticker].dropna()
+                
+            if df.empty or len(df) < 5:
                 continue
-
-            # RSI CALCULATION
-            delta = df['Close'].diff()
-            gain = delta.clip(lower=0)
-            loss = -delta.clip(upper=0)
-            avg_gain = gain.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
-            avg_loss = loss.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
-            rs = avg_gain / avg_loss
-            df['RSI'] = 100 - (100 / (1 + rs))
-            
-            historical_charts[ticker] = df[['Close', 'Volume', 'RSI']]
-            
-            # Metrics
+                
+            historical_charts[ticker] = df[['Close', 'Volume']]
+                
             current_price = float(df["Close"].iloc[-1])
             current_volume = float(df["Volume"].iloc[-1])
-            current_rsi = float(df['RSI'].iloc[-1])
-            twenty_day_high = float(df["High"].iloc[:-1].tail(20).max())
-            avg_volume = float(df["Volume"].iloc[:-1].mean())
-            whale_multiplier = current_volume / avg_volume if avg_volume > 0 else 0
             
-            # Logic & Signals
+            historical_df = df.iloc[:-1]
+            twenty_day_high = float(historical_df["High"].tail(20).max())
+            avg_volume = float(historical_df["Volume"].mean())
+            
             price_breakout = current_price >= twenty_day_high
             volume_surge = current_volume >= (avg_volume * 1.5)
+            whale_multiplier = current_volume / avg_volume if avg_volume > 0 else 0
             
-            breakout_signal = "🔥 FULL BREAKOUT" if (price_breakout and volume_surge) else ("📈 Price Breakout" if price_breakout else ("⚡ Volume Surge" if volume_surge else "⚪ Consolidated"))
-            squeeze_risk = "🔥 CRITICAL SQUEEZE" if (whale_multiplier > 2.0 or (price_breakout and volume_surge)) else ("💥 High Squeeze Potential" if volume_surge else "🛡️ Normal Exposure")
-            inst_action = "🐋 WHALE BLOCK BUY" if (whale_multiplier > 2.0 or (price_breakout and volume_surge)) else ("⚡ Institutional Squeeze" if volume_surge else "🛡️ Steady Squeeze")
+            if price_breakout and volume_surge:
+                breakout_signal = "🔥 FULL BREAKOUT"
+            elif price_breakout:
+                breakout_signal = "📈 Price Breakout"
+            elif volume_surge:
+                breakout_signal = "⚡ Volume Surge"
+            else:
+                breakout_signal = "⚪ Consolidated"
             
-            leopold_signal = "⚡ Long Data Center/Infra" if ticker in leopold_longs else ("🚨 Heavy Notional Put Hedge" if ticker in leopold_shorts else "⚪ Unallocated")
-            hf_signal = "🎯 Activist Target / Squeeze Lock" if (ticker in hf_activist_targets or whale_multiplier > 2.2) else ("🏢 Multi-Mgr Pod Momentum Pile-in" if (ticker in hf_pod_favorites and price_breakout) else ("📉 Crowded Macro Short Sector" if ticker in leopold_shorts else "⚖️ Neutral Multi-Strategy Book"))
-            political_signal = "🏛️ Active Allocation Spike" if (ticker in trump_high_velocity or int(hashlib.md5(ticker.encode()).hexdigest(), 16) % 4 == 0) else "💤 Dormant Portfolio Item"
-            
+            if whale_multiplier > 2.0 or (price_breakout and volume_surge):
+                inst_action = "🐋 WHALE BLOCK BUY"
+                squeeze_risk = "🔥 CRITICAL SQUEEZE"
+            elif volume_surge:
+                inst_action = "⚡ Institutional Squeeze"
+                squeeze_risk = "💥 High Squeeze Potential"
+            elif price_breakout:
+                inst_action = "📈 Delta Accumulation"
+                squeeze_risk = "📈 Technical Breakout"
+            else:
+                inst_action = "🛡️ Steady Squeeze"
+                squeeze_risk = "🛡️ Normal Exposure"
+                
+            if ticker in leopold_longs:
+                leopold_signal = "⚡ Long Data Center/Infra"
+            elif ticker in leopold_shorts:
+                leopold_signal = "🚨 Heavy Notional Put Hedge"
+            else:
+                leopold_signal = "⚪ Unallocated"
+                
+            if ticker in hf_activist_targets or whale_multiplier > 2.2:
+                hf_signal = "🎯 Activist Target / Squeeze Lock"
+            elif ticker in hf_pod_favorites and price_breakout:
+                hf_signal = "🏢 Multi-Mgr Pod Momentum Pile-in"
+            elif ticker in leopold_shorts:
+                hf_signal = "📉 Crowded Macro Short Sector"
+            else:
+                hf_signal = "⚖️ Neutral Multi-Strategy Book"
+                
+            ticker_hash = int(hashlib.md5(ticker.encode()).hexdigest(), 16)
+            if ticker in trump_high_velocity or (ticker_hash % 4 == 0):
+                political_signal = "🏛️ Active Allocation Spike"
+            else:
+                political_signal = "💤 Dormant Portfolio Item"
+                
             matrix_data.append({
-                "Ticker": ticker, "Price": f"${current_price:.2f}", "RSI": f"{current_rsi:.2f}",
-                "Breakout Status": breakout_signal, "Squeeze Risk Profile": squeeze_risk,
-                "Institutional Flow": inst_action, "Situational Awareness (Aschenbrenner)": leopold_signal,
-                "Hedge Fund Positioning": hf_signal, "Executive/Capitol Disclosures": political_signal
+                "Ticker": ticker,
+                "Price": f"${current_price:.2f}",
+                "Whale Vol Ratio": f"{whale_multiplier:.2f}x",
+                "20D High": f"${twenty_day_high:.2f}",
+                "Breakout Status": breakout_signal,
+                "Squeeze Risk Profile": squeeze_risk,
+                "Institutional Flow": inst_action,
+                "Situational Awareness (Aschenbrenner)": leopold_signal,
+                "Hedge Fund Positioning": hf_signal,
+                "Executive/Capitol Disclosures": political_signal
             })
     except Exception as e:
-        st.error(f"Data Connection Interrupted: {e}")
+        st.error(f"Data Engine Error: {e}")
+        
     return pd.DataFrame(matrix_data), historical_charts
 
-# --- 3. UI LAYOUT ---
+# --- 3. INTERFACE HEADER ---
 st.markdown("# 🦅 Rebel Terminal AI")
-# ... [Rest of your UI code: add form, tabs, and Section 5 chart visualizer] ...
+
+with st.form(key="add_ticker_form", clear_on_submit=True):
+    new_ticker = st.text_input("Deploy Asset to Matrix Ticker Line (e.g., POWL, SMCI):").strip().upper()
+    submit_button = st.form_submit_button(label="⚡ Add to Watchlist")
+    
+    if submit_button and new_ticker:
+        if new_ticker not in st.session_state.global_watchlist:
+            st.session_state.global_watchlist.append(new_ticker)
+            update_cloud_storage()
+            st.rerun()
+
+# --- 4. MAIN INTERFACE RENDERING ---
+if st.session_state.global_watchlist:
+    selected_timeframe = st.radio(
+        "Select Terminal Structural Horizon Lookup:",
+        options=["3mo", "6mo"],
+        index=1,
+        horizontal=True
+    )
+
+    df_results, chart_library = fetch_terminal_data(st.session_state.global_watchlist, timeframe=selected_timeframe)
+
+    if not df_results.empty:
+        tab1, tab2, tab3 = st.tabs([
+            "🔥 Institutional Squeeze Radar", 
+            "🏛️ Market Alpha & Flows", 
+            "⚡ Preshift Momentum"
+        ])
+
+        with tab1:
+            st.markdown("### Systemic Short Exposure & Breakout Matrix")
+            squeeze_df = df_results[["Ticker", "Price", "20D High", "Breakout Status", "Whale Vol Ratio", "Squeeze Risk Profile"]]
+            st.dataframe(squeeze_df, use_container_width=True, hide_index=True)
+
+        with tab2:
+            st.markdown("### Multi-Vector Accumulation Matrix")
+            flow_df = df_results[["Ticker", "Price", "Institutional Flow", "Situational Awareness (Aschenbrenner)", "Hedge Fund Positioning", "Executive/Capitol Disclosures"]]
+            st.dataframe(flow_df, use_container_width=True, hide_index=True)
+
+        with tab3:
+            st.markdown("### Momentum Velocity Radar ($1.00 - $10.00)")
+            
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                st.info("💡 Options Protocol: Double-check that options chains for target small-caps possess narrow bid-ask spreads.")
+            with col_b:
+                refresh_preshift = st.button("🔄 Scan Market Lines", use_container_width=True)
+                
+            if refresh_preshift or 'preshift_cache' not in st.session_state:
+                st.session_state.preshift_cache = fetch_preshift_movers()
+                    
+            if not st.session_state.preshift_cache.empty:
+                st.dataframe(
+                    st.session_state.preshift_cache,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.warning("No active small-cap targets currently matching structural momentum baseline parameters.")
+
+        # --- 5. VISUAL CHART MATRIX OVERLAY ---
+        st.markdown("---")
+        st.markdown("### 📈 Real-Time Matrix Terminal Visualizer")
+        
+        current_watchlist = st.session_state.global_watchlist
+        if st.session_state.selected_chart_ticker not in current_watchlist:
+            st.session_state.selected_chart_ticker = current_watchlist[0] if current_watchlist else "NVDA"
+            
+        active_ticker = st.selectbox(
+            "Select Target Vector Focus to Plot:", 
+            options=current_watchlist,
+            index=current_watchlist.index(st.session_state.selected_chart_ticker) if current_watchlist else 0
+        )
+        st.session_state.selected_chart_ticker = active_ticker
+
+        if active_ticker in chart_library:
+            ticker_data = chart_library[active_ticker]
+            st.line_chart(ticker_data['Close'], color="#00ffcc")
+            st.bar_chart(ticker_data['Volume'], color="#1f77b4")
+
+        # --- 6. COMPONENT CONTROL SECTOR ---
+        st.markdown("---")
+        st.write("### 🪓 Matrix Component Control")
+        cols = st.columns(min(len(st.session_state.global_watchlist), 4))
+        for idx, ticker in enumerate(list(st.session_state.global_watchlist)):
+            col_idx = idx % 4
+            with cols[col_idx]:
+                if st.button(f"🪓 Trim {ticker}", key=f"del_{ticker}"):
+                    st.session_state.global_watchlist.remove(ticker)
+                    update_cloud_storage()
+                    st.rerun()
+else:
+    st.info("Watchlist lines currently unallocated.")
