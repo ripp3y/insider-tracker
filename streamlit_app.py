@@ -57,3 +57,27 @@ if ticker_symbol:
         
     # Display raw price chart with indicators
     st.line_chart(data[['Close', 'EMA_Fast', 'EMA_Slow']])
+    if not active_signals.empty:
+        st.dataframe(active_signals[['Close', 'EMA_Fast', 'EMA_Slow', 'Signal']])
+    else:
+        st.info("No active BUY/SELL crossover signals found in the recent window.")
+        
+    # Display raw price chart with indicators
+    st.line_chart(data[['Close', 'EMA_Fast', 'EMA_Slow']])
+
+    # --- APPEND THIS AT THE VERY END OF YOUR FILE ---
+    signal_history = data[data['Signal'] != "HOLD"]
+
+    st.subheader("🎯 Triggered Buy & Sell Signals")
+
+    if not signal_history.empty:
+        st.dataframe(
+            signal_history[['Close', 'EMA_Fast', 'EMA_Slow', 'Signal']],
+            use_container_width=True
+        )
+        
+        latest_signal = signal_history.iloc[-1]
+        signal_color = "green" if latest_signal['Signal'] == "BUY" else "red"
+        st.markdown(f"Latest Signal Status: **:{signal_color}[{latest_signal['Signal']}]** at price **${latest_signal['Close']:.2f}**")
+    else:
+        st.info("No active crossover signals match the criteria in the selected timeframe.")
