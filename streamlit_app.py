@@ -1,32 +1,73 @@
+import json
+import os
 import pandas as pd
 import streamlit as st
 import yfinance as yf
 
-st.title("Algorithmic Signal Tracker")
+st.title("📈 Algorithmic Signal Tracker + Watchlist")
 
-ticker_symbol = st.text_input("Enter Ticker Symbol", value="NVDA")
+# --- WATCHLIST STORAGE LOGIC ---
+WATCHLIST_FILE = "watchlist.json"
+
+def load_watchlist():
+    if os.path.exists(WATCHLIST_FILE):
+        try:
+            with open(WATCHLIST_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    # Default fallback list based on your portfolio
+    return ["COHR", "AXTI", "WOLF", "RKLB", "LUNR", "ENVA", "ALB"]
+
+def save_watchlist(watchlist):
+    with open(WATCHLIST_FILE, "w") as f:
+        json.dump(watchlist, f)
+
+# Initialize session state for watchlist
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = load_watchlist()
+
+# --- SIDEBAR WATCHLIST MANAGEMENT ---
+st.sidebar.header("📁 Cloud Watchlist")
+
+new_ticker = st.sidebar.text_input("Add Ticker to Watchlist").upper()
+if st.sidebar.button("Add Ticker"):
+    if new_ticker and new_ticker not in st.session_state.watchlist:
+        st.session_state.watchlist.append(new_ticker)
+        save_watchlist(st.session_state.watchlist)
+        st.sidebar.success(f"Added {new_ticker}!")
+        st.rerun()
+
+# Allow selecting from the saved watchlist or typing manually
+selected_ticker = st.sidebar.selectbox("Select from Watchlist", st.session_state.watchlist)
+
+# Option to remove a ticker
+if st.sidebar.button("Remove Selected Ticker"):
+    if selected_ticker in st.session_state.watchlist:
+        st.session_state.watchlist.remove(selected_ticker)
+        save_watchlist(st.session_state.watchlist)
+        st.sidebar.warning(f"Removed {selected_ticker}!")
+        st.rerun()
+
+# Main input fallback
+ticker_symbol = st.text_input("Or Enter Any Ticker Symbol", value=selected_ticker).upper()
 
 @st.cache_data
 def calculate_custom_strategy(ticker, period="6mo"):
-    # Fetch historical data using yfinance
     df = yf.download(ticker, period=period, interval="1d")
     
-    # Flatten multi-index columns if returned by yfinance
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
         
-    # 1. Fast & Slow EMA (5/13 setup)
     df['EMA_Fast'] = df['Close'].ewm(span=5, adjust=False).mean()
     df['EMA_Slow'] = df['Close'].ewm(span=13, adjust=False).mean()
     
-    # 2. Momentum proxy (MACD Histogram)
     exp1 = df['Close'].ewm(span=12, adjust=False).mean()
     exp2 = df['Close'].ewm(span=26, adjust=False).mean()
     macd = exp1 - exp2
     signal_line = macd.ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = macd - signal_line
     
-    # 3. Signals
     trend_up = df['EMA_Fast'] > df['EMA_Slow']
     trend_dn = df['EMA_Fast'] < df['EMA_Slow']
     momentum_up = df['MACD_Hist'] > 0
@@ -39,7 +80,6 @@ def calculate_custom_strategy(ticker, period="6mo"):
     df.loc[crossover & trend_up & momentum_up, 'Signal'] = "BUY"
     df.loc[crossunder & trend_dn & momentum_dn, 'Signal'] = "SELL"
     
-    # 4. Assign Trailing Stop Rules per Ticker (8% for WOLF and AXTI, 5% for others)
     if ticker.upper() in ["WOLF", "AXTI"]:
         trailing_pct = 0.08
     else:
@@ -53,13 +93,11 @@ def calculate_custom_strategy(ticker, period="6mo"):
 if ticker_symbol:
     data = calculate_custom_strategy(ticker_symbol)
     
-    # Display raw price chart with indicators
     st.line_chart(data[['Close', 'EMA_Fast', 'EMA_Slow']])
 
-    # Filter and display triggered signals and trailing levels
     signal_history = data[data['Signal'] != "HOLD"]
 
-    st.subheader("🎯 Triggered Signals & Stop Targets")
+    st.subheader(f"🎯 Triggered Signals & Stop Targets: {ticker_symbol}")
 
     if not signal_history.empty:
         st.dataframe(
